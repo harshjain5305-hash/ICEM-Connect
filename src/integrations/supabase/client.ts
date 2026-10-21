@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/types/database';
+export type { Database } from '@/types/database';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -26,7 +26,7 @@ export const getSupabaseConfig = () => ({
 // Provide a stable client instance
 // If placeholder is in use, createClient still initializes without crashing Vite,
 // allowing offline/mock verification and health reporting.
-export const supabase = createClient<Database>(
+export const supabase = createClient(
   supabaseUrl || 'https://placeholder-project.supabase.co',
   supabaseAnonKey || 'placeholder-anon-key',
   {

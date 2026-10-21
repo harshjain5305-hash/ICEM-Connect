@@ -31,6 +31,7 @@ export interface Database {
           role?: UserRoleType;
           created_at?: string;
         };
+        Relationships: [];
       };
       students: {
         Row: {
@@ -75,6 +76,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
     };
     Views: {
@@ -111,6 +113,13 @@ export interface Database {
         Args: { student_uuid: string };
         Returns: boolean;
       };
+    };
+    Enums: {
+      student_status: StudentStatus;
+      user_role_type: UserRoleType;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
     };
   };
 }

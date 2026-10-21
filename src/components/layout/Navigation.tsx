@@ -1,8 +1,9 @@
 import React from 'react';
-import { Home, Search, PlusCircle, Car, User } from 'lucide-react';
+import { Home, Search, PlusCircle, Car, User, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/features/auth/useAuth';
 
-export type NavTab = 'home' | 'find' | 'offer' | 'rides' | 'profile';
+export type NavTab = 'home' | 'find' | 'offer' | 'rides' | 'profile' | 'admin';
 
 interface NavigationProps {
   currentTab: NavTab;
@@ -10,6 +11,8 @@ interface NavigationProps {
 }
 
 export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange }) => {
+  const { isAdmin } = useAuth();
+
   const navItems: { id: NavTab; label: string; icon: React.ReactNode; isAction?: boolean }[] = [
     { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" /> },
     { id: 'find', label: 'Find', icon: <Search className="h-5 w-5" /> },
@@ -18,11 +21,21 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange 
     { id: 'profile', label: 'Profile', icon: <User className="h-5 w-5" /> },
   ];
 
+  if (isAdmin) {
+    navItems.push({
+      id: 'admin',
+      label: 'Admin',
+      icon: <ShieldCheck className="h-5 w-5 text-[#E85C0D]" />,
+    });
+  }
+
+  const gridColsClass = isAdmin ? 'grid-cols-6' : 'grid-cols-5';
+
   return (
     <>
       {/* Mobile Bottom Navigation (Design.md §13) */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md md:hidden">
-        <div className="grid h-16 grid-cols-5 items-center px-2">
+        <div className={cn('grid h-16 items-center px-2', gridColsClass)}>
           {navItems.map((item) => {
             const isActive = currentTab === item.id;
             return (
