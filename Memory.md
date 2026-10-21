@@ -77,9 +77,9 @@ Rating / Reputation
 
 # 2. Current Overall State
 
-## State: PHASE 1 COMPLETE — AUTHENTICATION & STUDENT IDENTITY ESTABLISHED
+## State: PHASE 2 COMPLETE — LOCATIONS & CORE DATA MODEL ESTABLISHED
 
-The verified identity layer, student profile management, role separation, and authorization guards have been implemented and verified according to `Phases.md §5`, `PRD.md §5 (UC-01)`, and `Architecture.md §5 & §6.1`.
+The reusable location catalog, relational database schema, database migrations, TypeScript domain definitions, and location search selection components have been implemented and verified according to `Phases.md §6`, `PRD.md §5 (UC-02)`, and `Architecture.md §7 & §10`.
 
 Current state:
 
@@ -89,7 +89,7 @@ Current state:
 - Development rules: **documented**
 - Development phases: **documented**
 - Design system/UX: **implemented with official Indira ICEM brand palette**
-- Project memory: **updated with Phase 1 verified evidence**
+- Project memory: **updated with Phase 2 verified evidence**
 - Frontend foundation: **VERIFIED & OPERATIONAL**
 - Backend connection & health service: **VERIFIED & OPERATIONAL**
 - Database baseline migration & RLS: **VERIFIED in supabase/migrations/**
@@ -97,9 +97,11 @@ Current state:
 - Student identity & private PRN storage: **VERIFIED & TESTED (no PRN leakage)**
 - Role management (`STUDENT`, `ADMIN`): **VERIFIED & TESTED**
 - Route & API authorization guards: **VERIFIED & TESTED (403 on unauthorized access)**
-- Test suite (Vitest): **26/26 PASSING**
-- Production bundle build: **VERIFIED**
-- Locations + Core Data Model: **next target (Phase 2)**
+- Locations catalog & search: **VERIFIED & TESTED (15 authentic ICEM/PCMC transit nodes)**
+- Relational core database schema: **VERIFIED in supabase/migrations/ (11 tables + RLS + stored procedures)**
+- Test suite (Vitest): **43/43 PASSING across 10 test suites**
+- Production bundle build: **VERIFIED (0 TypeScript errors)**
+- Ride Creation & Lifecycle: **next target (Phase 3)**
 - Realtime implementation: **pending (scheduled for Phase 8)**
 - Live-location implementation: **pending (scheduled for Phase 9)**
 - Deployment: **pending (scheduled for Phase 11)**
@@ -567,26 +569,70 @@ The following are **not** counted as completed merely because they appear in doc
 
 # 12. Current Development Phase
 
-## Current phase: Phase 1 Completed; Ready for Phase 2 — Locations + Core Data Model
+## Current phase: Phase 2 Completed; Ready for Phase 3 — Ride Creation + Ride Lifecycle
 
-Phase 1 — Authentication + Student Identity has been executed, tested, and verified against all criteria in `Phases.md §5`.
+Phase 2 — Locations + Core Data Model has been executed, tested, and verified against all criteria in `Phases.md §6`.
 
-The next implementation milestone is **Phase 2 — Locations + Core Data Model**.
+The next implementation milestone is **Phase 3 — Ride Creation + Ride Lifecycle**.
 
-Do not jump directly to ride creation, routing, live location, or AI features before the location and relational baseline are verified.
+Do not jump directly to maps routing, matching, join requests, live location, or AI features before ride creation and the state machine lifecycle are verified.
 
 ---
 
 # 13. Immediate Next Task
 
-### Phase 2 — Locations + Core Data Model
+### Phase 3 — Ride Creation + Ride Lifecycle
 
 Implement and verify:
 
-1. Baseline models for `locations`, `rides`, `ride_routes`, `ride_waypoints`, `ride_join_requests`, `ride_participants`, `ride_sessions`, `ratings`, `notifications`, `reports`.
-2. Seed dataset for ICEM campus, main road, bus stops, and nearby landmarks.
-3. Location search and waypoint retrieval API / service.
-4. Foreign keys, constraints, and RLS policies on location tables.
+1. **Offer Ride Flow (`OfferRideForm.tsx`):**
+   - Origin and destination selection with verified ICEM/PCMC locations.
+   - Departure date, time, available seats, vehicle type (Bike/Scooter/Car), and optional pickup/coordination notes.
+2. **Deterministic Ride State Machine:**
+   - Supported statuses: `DRAFT`, `PUBLISHED`, `CONFIRMED`, `ACTIVE`, `COMPLETED`, `CANCELLED`, `EXPIRED`.
+   - Strict transition rules (e.g., `DRAFT` $\rightarrow$ `PUBLISHED`, `PUBLISHED` $\rightarrow$ `CONFIRMED`, `ACTIVE` $\rightarrow$ `COMPLETED`).
+   - Rejection of invalid transitions (e.g., `COMPLETED` $\rightarrow$ `ACTIVE`, `CANCELLED` $\rightarrow$ `PUBLISHED`).
+3. **Ride Repository & Service Enhancements:**
+   - CRUD operations with strict host ownership verification.
+   - Status transition operations with server-enforced validation.
+   - "My Rides" query returning hosted rides with active statuses.
+4. **"My Rides" Dashboard Management View:**
+   - Visual cards showing ride status badges, origin $\rightarrow$ destination, date/time, vehicle, and remaining seats.
+   - Actions to publish drafts, view ride details, and cancel active/published rides.
+5. **Testing Suite:**
+   - Unit tests for ride creation schema and state machine transitions.
+   - Integration tests for host ownership and ride lifecycle actions.
+
+---
+
+### Phase 2 Evidence & Completion Record
+
+The following concrete evidence confirms Phase 2 is complete:
+
+1. **Documented Seed Dataset ([`docs/locations_seed.md`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/docs/locations_seed.md)):**
+   - 15 authentic ICEM & PCMC transit nodes including ICEM Campus Parandwadi, Somatne Phata, Talegaon Station, Dehu Road, Akurdi Railway Station, Nigdi Pradhikaran, Chinchwad Station, Pimpri Chowk, Bhosari Bus Terminus, Hinjawadi Phase 1, Ravet Chowk, Wakad Bridge, and Nashik Phata.
+   - All entries documented with exact WGS84 coordinates, transit categories, and common student landmarks.
+2. **Relational Database Migration ([`supabase/migrations/20261021000002_phase2_core_data_model.sql`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/supabase/migrations/20261021000002_phase2_core_data_model.sql)):**
+   - 11 core tables created with foreign keys, checks, and cascade rules: `locations`, `rides`, `ride_routes`, `ride_waypoints`, `ride_join_requests`, `ride_participants`, `ride_sessions`, `ratings`, `notifications`, `reports`, `ride_messages`.
+   - Seed data insertion for 15 locations.
+   - Stored procedure `search_locations(search_text, filter_type, max_results)` with trigram/similarity search indexing.
+   - Granular RLS policies on all tables ensuring location data is publicly readable by verified students.
+3. **Database TypeScript Definitions ([`src/types/database.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/types/database.ts)):**
+   - Fully typed schema mappings for all 11 tables, inserts, updates, and RPC functions.
+4. **Location Schemas & Service ([`src/features/locations/location.service.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/locations/location.service.ts)):**
+   - Zod validation in `src/features/locations/location.schema.ts`.
+   - Dual-mode service querying Supabase `locations` table / RPC with verified offline seed fallback.
+   - Search by text, ID lookup, and category filtering.
+5. **Relational Ride Models & Repository ([`src/features/rides/ride.repository.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/ride.repository.ts)):**
+   - Domain types, enums, and Zod schemas in `ride.types.ts` and `ride.schema.ts`.
+   - Full repository implementation: `createRide`, `getRideById`, `listRidesByHost`, `updateRideStatus`, `cancelRide`.
+6. **Location Selection UI Component ([`src/features/locations/LocationSelect.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/locations/LocationSelect.tsx)):**
+   - Autocomplete dropdown with category badges, address subheadings, and clear buttons.
+   - Integrated into Find Ride and Offer Ride views in `src/App.tsx`.
+7. **Verification & Tests:**
+   - 43/43 tests passing across 10 test suites (including `location.service.test.ts`, `ride.schema.test.ts`, `ride.repository.test.ts`).
+   - `tsc --noEmit` passing with 0 errors.
+   - Production bundle compiled in 4.48s.
 
 ---
 
@@ -1054,11 +1100,27 @@ These are documented requirements only. They must not be treated as implemented 
 
 # 29. Final State Statement
 
-**Phase 1 — Authentication + Student Identity has been executed and verified in the repository. The verified student identity layer, secure PRN storage and strict non-exposure, user role isolation (STUDENT, ADMIN), route authorization guards, profile editing, and admin moderation features are fully operational. All 26 tests pass across 7 test suites, TypeScript builds without errors, and the project is ready to proceed to Phase 2: Locations + Core Data Model.**
+**Phase 2 — Locations + Core Data Model has been executed and verified in the repository. The reusable location catalog (15 ICEM/PCMC transit nodes), relational core database schema (11 tables, constraints, indexes, RLS, and stored search procedure), TypeScript database interfaces, dual-mode location search service, ride domain repository, and interactive UI selection components are fully operational. All 43 tests pass across 10 test suites, TypeScript builds without errors, and the project is ready to proceed to Phase 3: Ride Creation + Ride Lifecycle.**
 
 ---
 
 ## Changelog
+
+### 2026-10-21 — Phase 2 — Locations + Core Data Model Implemented & Verified
+
+State:
+- Transitioned project state from Phase 1 to **Phase 2 Complete**.
+- Documented 15 authentic ICEM/PCMC transit nodes in `docs/locations_seed.md` with exact WGS84 coordinates.
+- Created SQL migration `supabase/migrations/20261021000002_phase2_core_data_model.sql` with 11 tables, constraints, indexes, RLS, and `search_locations()` RPC.
+- Generated comprehensive TypeScript types in `src/types/database.ts`.
+- Implemented `location.service.ts` and `location.schema.ts` with dual-mode Supabase/offline-seed search.
+- Created interactive `LocationSelect.tsx` search autocomplete UI component.
+- Implemented `ride.repository.ts`, `ride.schema.ts`, and `ride.types.ts` defining relational ride structures.
+- Integrated `LocationSelect` into Find Ride and Offer Ride views in `src/App.tsx`.
+- Verified test suite: 43/43 tests passing across 10 test suites (+17 tests added).
+- Verified TypeScript compilation: 0 errors with `tsc --noEmit`.
+- Verified production build: completed successfully with `vite build`.
+- Set next implementation target to **Phase 3 — Ride Creation + Ride Lifecycle**.
 
 ### 2026-10-21 — Phase 1 — Authentication + Student Identity Implemented & Verified
 

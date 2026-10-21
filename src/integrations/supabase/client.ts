@@ -5,6 +5,10 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export const isSupabaseConfigured = (): boolean => {
+  // During automated unit testing, use deterministic local storage to avoid remote email rate-limiting
+  if (import.meta.env.MODE === 'test') {
+    return false;
+  }
   if (!supabaseUrl || !supabaseAnonKey) return false;
   if (
     supabaseUrl.includes('placeholder-project') ||

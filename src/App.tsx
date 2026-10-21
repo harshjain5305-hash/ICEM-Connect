@@ -9,12 +9,19 @@ import { AdminPanel } from '@/features/admin/AdminPanel';
 import { HomeDashboard } from '@/features/home/HomeDashboard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Compass, Car, Search, PlusCircle, ArrowLeft, LogIn } from 'lucide-react';
+import { LocationSelect } from '@/features/locations/LocationSelect';
+import type { Location } from '@/features/locations/location.schema';
+import { Compass, Car, Search, PlusCircle, ArrowLeft, LogIn, MapPin } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
   const { user, profile, isAuthenticated } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  const [findPickup, setFindPickup] = useState<Location | null>(null);
+  const [findDrop, setFindDrop] = useState<Location | null>(null);
+  const [offerOrigin, setOfferOrigin] = useState<Location | null>(null);
+  const [offerDest, setOfferDest] = useState<Location | null>(null);
 
   const renderTabContent = () => {
     switch (currentTab) {
@@ -41,7 +48,7 @@ const AppContent: React.FC = () => {
               </div>
             }
           >
-            <div className="mx-auto max-w-2xl px-4 py-8">
+            <div className="mx-auto max-w-2xl px-4 py-8 space-y-4">
               <Card>
                 <CardHeader>
                   <div className="flex items-center gap-2">
@@ -50,13 +57,43 @@ const AppContent: React.FC = () => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="rounded-lg border border-border bg-muted/40 p-4 text-xs text-muted-foreground space-y-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <LocationSelect
+                      label="Pickup Location"
+                      placeholder="e.g. ICEM Gate or Somatne Phata"
+                      value={findPickup?.id}
+                      onSelect={setFindPickup}
+                    />
+                    <LocationSelect
+                      label="Destination"
+                      placeholder="e.g. Talegaon Station or Bhosari"
+                      value={findDrop?.id}
+                      onSelect={setFindDrop}
+                    />
+                  </div>
+
+                  {findPickup && findDrop && (
+                    <div className="rounded-xl border border-primary/20 bg-[#003C84]/5 p-3.5 text-xs text-primary space-y-1">
+                      <div className="font-semibold flex items-center gap-1.5">
+                        <MapPin className="h-4 w-4 text-[#00A2A5]" />
+                        <span>Selected Route Segment</span>
+                      </div>
+                      <p className="text-foreground">
+                        {findPickup.name} &rarr; {findDrop.name}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Phase 2 Relational Model active. Deterministic route matching and join requests activate in Phase 5 &amp; 6.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="rounded-lg border border-border bg-muted/40 p-4 text-xs text-muted-foreground space-y-1">
                     <div className="font-semibold text-foreground flex items-center gap-1.5">
                       <Compass className="h-4 w-4 text-primary" />
-                      <span>Phase 1 Verification Satisfied</span>
+                      <span>Phase 2 — Relational Locations Active</span>
                     </div>
                     <p>
-                      Logged in as <strong>{profile?.name}</strong> ({profile?.email}). Ride discovery &amp; deterministic route matching will activate in <strong>Phase 5</strong> after Phase 2 (Locations &amp; Data Model).
+                      Locations are dynamically retrieved from the PostgreSQL <code>locations</code> seed table rather than hard-coded strings.
                     </p>
                   </div>
                   <Button variant="outline" onClick={() => setCurrentTab('home')} className="gap-2">
@@ -82,7 +119,7 @@ const AppContent: React.FC = () => {
               </div>
             }
           >
-            <div className="mx-auto max-w-2xl px-4 py-8">
+            <div className="mx-auto max-w-2xl px-4 py-8 space-y-4">
               <Card>
                 <CardHeader>
                   <div className="flex items-center gap-2">
@@ -91,13 +128,43 @@ const AppContent: React.FC = () => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="rounded-lg border border-border bg-muted/40 p-4 text-xs text-muted-foreground space-y-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <LocationSelect
+                      label="Trip Origin"
+                      placeholder="e.g. ICEM Main Campus"
+                      value={offerOrigin?.id}
+                      onSelect={setOfferOrigin}
+                    />
+                    <LocationSelect
+                      label="Trip Destination"
+                      placeholder="e.g. Bhosari Bus Stand"
+                      value={offerDest?.id}
+                      onSelect={setOfferDest}
+                    />
+                  </div>
+
+                  {offerOrigin && offerDest && (
+                    <div className="rounded-xl border border-primary/20 bg-[#003C84]/5 p-3.5 text-xs text-primary space-y-1">
+                      <div className="font-semibold flex items-center gap-1.5">
+                        <MapPin className="h-4 w-4 text-[#00A2A5]" />
+                        <span>Planned Trip Corridor</span>
+                      </div>
+                      <p className="text-foreground">
+                        {offerOrigin.name} &rarr; {offerDest.name}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Ready for Phase 3 ride publishing, seat capacity, and waypoint sequencing.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="rounded-lg border border-border bg-muted/40 p-4 text-xs text-muted-foreground space-y-1">
                     <div className="font-semibold text-foreground flex items-center gap-1.5">
                       <Compass className="h-4 w-4 text-primary" />
-                      <span>Phase 1 Verification Satisfied</span>
+                      <span>Phase 2 — Core Data Model Verified</span>
                     </div>
                     <p>
-                      Host identity verified for <strong>{profile?.name}</strong>. Ride lifecycle &amp; capacity transactions will activate in <strong>Phase 3</strong>.
+                      Host identity verified for <strong>{profile?.name}</strong>. Full ride publication and state machine transitions activate in <strong>Phase 3</strong>.
                     </p>
                   </div>
                   <Button variant="outline" onClick={() => setCurrentTab('home')} className="gap-2">
