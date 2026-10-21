@@ -60,6 +60,7 @@ export const requestRepository = {
     input: CreateJoinRequestInput
   ): Promise<JoinRequest> {
     const isLive = isSupabaseConfigured();
+    let liveRequest: JoinRequest | null = null;
 
     if (isLive) {
       try {
@@ -72,19 +73,23 @@ export const requestRepository = {
           p_specific_area_note: input.specific_area_note || null,
         });
 
-        if (error) {
-          throw new Error(error.message);
-        }
-        if (data && data.request_id) {
-          const req = await this.getRequestById(data.request_id);
-          if (req) return req;
+        if (!error && data && data.request_id) {
+          liveRequest = await this.getRequestById(data.request_id);
         }
       } catch (err) {
         console.warn('Live create join request error, falling back to local mode:', err);
       }
     }
 
-    // Local mode
+    if (liveRequest) {
+      // Mirror in local store for instant reactive availability
+      const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
+      requests[liveRequest.id] = liveRequest;
+      saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+      return liveRequest;
+    }
+
+    // Local / Offline fallback mode
     const ride = await rideRepository.getRideById(input.ride_id);
     if (!ride) {
       throw new Error(`Ride with ID ${input.ride_id} not found`);
@@ -183,17 +188,20 @@ export const requestRepository = {
 
     const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
     const req = requests[requestId] || null;
-    if (req && !req.student) {
-      req.student = await getPublicStudentInfo(req.student_id);
-    }
-    if (req && !req.ride) {
-      req.ride = (await rideRepository.getRideById(req.ride_id)) || undefined;
+    if (req) {
+      if (!req.student) {
+        req.student = await getPublicStudentInfo(req.student_id);
+      }
+      if (!req.ride) {
+        req.ride = (await rideRepository.getRideById(req.ride_id)) || undefined;
+      }
     }
     return req;
   },
 
   async listRequestsByRide(rideId: string): Promise<JoinRequest[]> {
     const isLive = isSupabaseConfigured();
+    const liveResults: JoinRequest[] = [];
 
     if (isLive) {
       try {
@@ -203,32 +211,43 @@ export const requestRepository = {
           .eq('ride_id', rideId)
           .order('created_at', { ascending: false });
 
-        if (!error && data) {
-          const results: JoinRequest[] = [];
+        if (!error && data && data.length > 0) {
           for (const item of data) {
             const req = item as unknown as JoinRequest;
             req.student = await getPublicStudentInfo(req.student_id);
-            results.push(req);
+            liveResults.push(req);
           }
-          return results;
         }
       } catch (err) {
         console.warn('Live listRequestsByRide error, falling back to local mode:', err);
       }
     }
 
-    const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
-    const list = Object.values(requests).filter((r) => r.ride_id === rideId);
-    for (const r of list) {
-      if (!r.student) {
-        r.student = await getPublicStudentInfo(r.student_id);
+    // Always merge with local storage requests
+    const localRequests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
+    const localList = Object.values(localRequests).filter((r) => r.ride_id === rideId);
+
+    const combinedMap = new Map<string, JoinRequest>();
+    for (const r of liveResults) {
+      combinedMap.set(r.id, r);
+    }
+    for (const r of localList) {
+      if (!combinedMap.has(r.id)) {
+        if (!r.student) {
+          r.student = await getPublicStudentInfo(r.student_id);
+        }
+        combinedMap.set(r.id, r);
       }
     }
-    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return Array.from(combinedMap.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   },
 
   async listRequestsByStudent(studentId: string): Promise<JoinRequest[]> {
     const isLive = isSupabaseConfigured();
+    const liveResults: JoinRequest[] = [];
 
     if (isLive) {
       try {
@@ -238,32 +257,43 @@ export const requestRepository = {
           .eq('student_id', studentId)
           .order('created_at', { ascending: false });
 
-        if (!error && data) {
-          const results: JoinRequest[] = [];
+        if (!error && data && data.length > 0) {
           for (const item of data) {
             const req = item as unknown as JoinRequest;
             req.ride = (await rideRepository.getRideById(req.ride_id)) || undefined;
-            results.push(req);
+            liveResults.push(req);
           }
-          return results;
         }
       } catch (err) {
         console.warn('Live listRequestsByStudent error, falling back to local mode:', err);
       }
     }
 
-    const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
-    const list = Object.values(requests).filter((r) => r.student_id === studentId);
-    for (const r of list) {
-      if (!r.ride) {
-        r.ride = (await rideRepository.getRideById(r.ride_id)) || undefined;
+    // Always merge with local storage requests
+    const localRequests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
+    const localList = Object.values(localRequests).filter((r) => r.student_id === studentId);
+
+    const combinedMap = new Map<string, JoinRequest>();
+    for (const r of liveResults) {
+      combinedMap.set(r.id, r);
+    }
+    for (const r of localList) {
+      if (!combinedMap.has(r.id)) {
+        if (!r.ride) {
+          r.ride = (await rideRepository.getRideById(r.ride_id)) || undefined;
+        }
+        combinedMap.set(r.id, r);
       }
     }
-    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return Array.from(combinedMap.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   },
 
   async listParticipantsByRide(rideId: string): Promise<RideParticipant[]> {
     const isLive = isSupabaseConfigured();
+    const liveResults: RideParticipant[] = [];
 
     if (isLive) {
       try {
@@ -273,30 +303,37 @@ export const requestRepository = {
           .eq('ride_id', rideId)
           .eq('status', 'CONFIRMED');
 
-        if (!error && data) {
-          const results: RideParticipant[] = [];
+        if (!error && data && data.length > 0) {
           for (const item of data) {
             const p = item as unknown as RideParticipant;
             p.student = await getPublicStudentInfo(p.student_id);
-            results.push(p);
+            liveResults.push(p);
           }
-          return results;
         }
       } catch (err) {
         console.warn('Live listParticipantsByRide error, falling back to local mode:', err);
       }
     }
 
-    const participants = getLocalData<RideParticipant>(LOCAL_STORAGE_PARTICIPANTS_KEY);
-    const list = Object.values(participants).filter(
+    const localParticipants = getLocalData<RideParticipant>(LOCAL_STORAGE_PARTICIPANTS_KEY);
+    const localList = Object.values(localParticipants).filter(
       (p) => p.ride_id === rideId && p.status === 'CONFIRMED'
     );
-    for (const p of list) {
-      if (!p.student) {
-        p.student = await getPublicStudentInfo(p.student_id);
+
+    const combinedMap = new Map<string, RideParticipant>();
+    for (const p of liveResults) {
+      combinedMap.set(p.id, p);
+    }
+    for (const p of localList) {
+      if (!combinedMap.has(p.id)) {
+        if (!p.student) {
+          p.student = await getPublicStudentInfo(p.student_id);
+        }
+        combinedMap.set(p.id, p);
       }
     }
-    return list;
+
+    return Array.from(combinedMap.values());
   },
 
   async acceptRequest(hostId: string, requestId: string): Promise<AcceptRequestResult> {
@@ -309,10 +346,17 @@ export const requestRepository = {
           p_host_id: hostId,
         });
 
-        if (error) {
-          throw new Error(error.message);
+        if (!error && data) {
+          // Sync local storage state
+          const req = await this.getRequestById(requestId);
+          if (req) {
+            const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
+            req.status = 'ACCEPTED';
+            requests[requestId] = req;
+            saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+          }
+          return data as unknown as AcceptRequestResult;
         }
-        return data as unknown as AcceptRequestResult;
       } catch (err) {
         console.warn('Live accept_join_request error, falling back to local mode:', err);
       }
@@ -420,10 +464,15 @@ export const requestRepository = {
           p_reason: reason || null,
         });
 
-        if (error) {
-          throw new Error(error.message);
+        if (!error) {
+          const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
+          if (requests[requestId]) {
+            requests[requestId].status = 'REJECTED';
+            requests[requestId].updated_at = new Date().toISOString();
+            saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+          }
+          return { success: true, status: 'REJECTED' };
         }
-        return { success: true, status: 'REJECTED' };
       } catch (err) {
         console.warn('Live reject_join_request error, falling back to local mode:', err);
       }
@@ -475,10 +524,15 @@ export const requestRepository = {
           p_student_id: studentId,
         });
 
-        if (error) {
-          throw new Error(error.message);
+        if (!error && data) {
+          const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
+          if (requests[requestId]) {
+            requests[requestId].status = 'CANCELLED';
+            requests[requestId].updated_at = new Date().toISOString();
+            saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+          }
+          return data as unknown as CancelRequestResult;
         }
-        return data as unknown as CancelRequestResult;
       } catch (err) {
         console.warn('Live cancel_join_request error, falling back to local mode:', err);
       }

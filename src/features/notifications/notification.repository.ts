@@ -23,6 +23,7 @@ function saveLocalData<T>(key: string, data: Record<string, T>): void {
 export const notificationRepository = {
   async createNotification(input: CreateNotificationInput): Promise<AppNotification> {
     const isLive = isSupabaseConfigured();
+    let liveNotif: AppNotification | null = null;
 
     if (isLive) {
       try {
@@ -39,19 +40,18 @@ export const notificationRepository = {
           .select()
           .single();
 
-        if (error || !data) {
-          throw new Error(error?.message || 'Failed to create notification');
+        if (!error && data) {
+          liveNotif = data as unknown as AppNotification;
         }
-        return data as unknown as AppNotification;
       } catch (err) {
-        console.warn('Live notification create error, falling back to local mode:', err);
+        console.warn('Live notification create error, persisting locally:', err);
       }
     }
 
-    // Local mode
+    // Always mirror to local store so notification is guaranteed to be visible
     const store = getLocalData<AppNotification>(LOCAL_STORAGE_NOTIFS_KEY);
-    const id = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const newNotif: AppNotification = {
+    const id = liveNotif?.id || `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newNotif: AppNotification = liveNotif || {
       id,
       user_id: input.user_id,
       title: input.title,
@@ -62,13 +62,14 @@ export const notificationRepository = {
       created_at: new Date().toISOString(),
     };
 
-    store[id] = newNotif;
+    store[newNotif.id] = newNotif;
     saveLocalData(LOCAL_STORAGE_NOTIFS_KEY, store);
     return newNotif;
   },
 
   async listByUser(userId: string): Promise<AppNotification[]> {
     const isLive = isSupabaseConfigured();
+    const liveResults: AppNotification[] = [];
 
     if (isLive) {
       try {
@@ -78,19 +79,31 @@ export const notificationRepository = {
           .eq('user_id', userId)
           .order('created_at', { ascending: false });
 
-        if (!error && data) {
-          return data as unknown as AppNotification[];
+        if (!error && data && data.length > 0) {
+          liveResults.push(...(data as unknown as AppNotification[]));
         }
       } catch (err) {
         console.warn('Live notification list error, falling back to local mode:', err);
       }
     }
 
-    // Local mode
+    // Always merge with local storage notifications
     const store = getLocalData<AppNotification>(LOCAL_STORAGE_NOTIFS_KEY);
-    return Object.values(store)
-      .filter((n) => n.user_id === userId)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const localList = Object.values(store).filter((n) => n.user_id === userId);
+
+    const combinedMap = new Map<string, AppNotification>();
+    for (const n of liveResults) {
+      combinedMap.set(n.id, n);
+    }
+    for (const n of localList) {
+      if (!combinedMap.has(n.id)) {
+        combinedMap.set(n.id, n);
+      }
+    }
+
+    return Array.from(combinedMap.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   },
 
   async markAsRead(notificationId: string): Promise<void> {

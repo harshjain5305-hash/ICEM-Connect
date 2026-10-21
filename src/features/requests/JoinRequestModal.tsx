@@ -21,6 +21,7 @@ export interface JoinRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRequestSubmitted?: () => void;
+  onViewRequests?: () => void;
 }
 
 export const JoinRequestModal: React.FC<JoinRequestModalProps> = ({
@@ -30,6 +31,7 @@ export const JoinRequestModal: React.FC<JoinRequestModalProps> = ({
   isOpen,
   onClose,
   onRequestSubmitted,
+  onViewRequests,
 }) => {
   const { user } = useAuth();
   const [seatCount, setSeatCount] = useState<number>(1);
@@ -112,12 +114,26 @@ export const JoinRequestModal: React.FC<JoinRequestModalProps> = ({
                   Waiting for the host to accept your request. You will receive a notification as soon as they respond.
                 </p>
               </div>
-              <Button
-                className="w-full bg-[#003C84] hover:bg-[#1D59A3] text-white"
-                onClick={onClose}
-              >
-                Done
-              </Button>
+              <div className="flex flex-col gap-2 pt-2">
+                {onViewRequests && (
+                  <Button
+                    className="w-full bg-[#003C84] hover:bg-[#1D59A3] text-white"
+                    onClick={() => {
+                      onClose();
+                      onViewRequests();
+                    }}
+                  >
+                    View in My Booked Requests
+                  </Button>
+                )}
+                <Button
+                  variant={onViewRequests ? 'outline' : 'primary'}
+                  className={`w-full ${!onViewRequests ? 'bg-[#003C84] hover:bg-[#1D59A3] text-white' : ''}`}
+                  onClick={onClose}
+                >
+                  Done
+                </Button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">

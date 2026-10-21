@@ -29,6 +29,7 @@ import {
 
 export interface FindRideViewProps {
   onOfferClick?: () => void;
+  onViewRequestsClick?: () => void;
 }
 
 function getTodayString(): string {
@@ -39,7 +40,7 @@ function getTodayString(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick }) => {
+export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick, onViewRequestsClick }) => {
   const { user } = useAuth();
 
   const [pickup, setPickup] = useState<Location | null>(null);
@@ -349,6 +350,7 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick }) => {
           onRequestSubmitted={() => {
             handleSearch();
           }}
+          onViewRequests={onViewRequestsClick}
         />
       )}
     </div>

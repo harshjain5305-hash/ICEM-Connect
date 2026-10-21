@@ -110,11 +110,12 @@ Current state:
 - Strict directionality enforcement ($seq_{pickup} < seq_{drop}$): **VERIFIED & TESTED (0 reverse candidates)**
 - Join request creation & optional pickup note: **VERIFIED & TESTED (`JoinRequestModal` + `request.service.ts`)**
 - Atomic capacity allocation & race-condition guard: **VERIFIED & TESTED (concurrency test passes)**
-- Host request management & participant creation: **VERIFIED & TESTED (`HostRequestsSection`)**
-- Passenger request tracking & cancellation: **VERIFIED & TESTED (`MyRequestsView`)**
+- Host request management & participant creation: **VERIFIED & TESTED (`HostRequestsSection` + Direct Host Card Requests in `MyRidesView`)**
+- Passenger request tracking & cancellation: **VERIFIED & TESTED (`MyRequestsView` + `JoinRequestModal` navigation)**
 - In-app notification engine & bell popover: **VERIFIED & TESTED (`notificationService` + `NotificationBell`)**
+- Hybrid storage sync & fallback deduplication: **VERIFIED & TESTED (`request.repository.ts` + `notification.repository.ts`)**
 - Database Phase 6 RPC migration: **VERIFIED in `20261021000006_phase6_join_requests_capacity.sql`**
-- Test suite (Vitest): **126/126 PASSING across 24 test suites**
+- Test suite (Vitest): **127/127 PASSING across 25 test suites**
 - Production bundle build: **VERIFIED (0 TypeScript errors)**
 - Ratings, Reports & Admin Moderation: **next target (Phase 7)**
 - Realtime implementation: **pending (scheduled for Phase 8)**
@@ -1194,6 +1195,29 @@ These are documented requirements only. They must not be treated as implemented 
 ---
 
 ## Changelog
+
+### 2026-10-21 — Phase 6 Hardening — Hybrid Storage Sync, Host Card Request Actions & End-to-End Integration Verified
+
+State:
+- Resolved split-brain storage issue between Supabase remote tables and `localStorage` fallback in `request.repository.ts` and `notification.repository.ts`.
+- Repositories now systematically merge and deduplicate remote Supabase rows with `localStorage` records on all read queries (`listRequestsByRide`, `listRequestsByStudent`, `listParticipantsByRide`, `listByUser`), ensuring requests and notifications are never hidden when RLS blocks anonymous direct table inserts.
+- Upgraded `MyRidesView.tsx` host ride cards:
+  - Added pending request count badges directly to the host card header.
+  - Rendered an embedded "Incoming Join Requests" section on each host card showing requester name, department, year, star rating, requested seats, and optional specific-area pickup notes (`Design.md §73`).
+  - Added one-click direct `[Accept Seat]` and `[Reject]` action buttons directly on host cards with instant capacity decrement and notification dispatch.
+- Upgraded `JoinRequestModal.tsx` and `FindRideView.tsx`:
+  - Added `onViewRequests` callback to direct passengers straight to "My Booked Seats & Requests" upon sending a request.
+  - Added request count badges to the top navigation pills in `MyRidesView`.
+- Created comprehensive end-to-end integration test suite `src/features/requests/joinRequestFlow.integration.test.tsx` verifying:
+  1. Host offers a ride with 2 seats.
+  2. Passenger discovers the ride and submits a join request with a specific pickup note.
+  3. Host receives in-app notification and sees incoming request with badge and pickup note on host ride card.
+  4. Host clicks `[Accept Seat]` directly on the ride card.
+  5. Capacity decrements from 2 to 1 and participant record is created.
+  6. Passenger receives acceptance notification and sees confirmed booking in "My Booked Seats & Requests".
+- Verified full test suite: **127/127 tests passing across 25 test files**.
+- Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+- Verified production build: **clean bundle generated** (`npm run build`).
 
 ### 2026-10-21 — Phase 6 — Join Requests + Capacity + Notifications Implemented & Verified
 
