@@ -111,32 +111,33 @@ Avoid excessive decoration, corporate ERP styling, taxi-app styling, and generic
 
 # 4. Color System
 
-Use a restrained semantic color system.
+Use an institutional palette derived directly from Indira College of Engineering & Management (ICEM)'s official brand identity (`indiraicem.ac.in`).
 
-## 4.1 Primary
+## 4.1 Primary Brand Palette
 
-Use an indigo / blue-violet family for primary buttons, active navigation, links, selected controls, and important interactive elements.
+- **Indira Deep Navy (`#003C84`)**: Primary brand identity, header bars, authoritative headings, and default solid action buttons (`hsl(213, 100%, 26%)`).
+- **Indira Royal Blue (`#1D59A3`)**: Interactive hover states, active tab highlights, and secondary focus rings (`hsl(213, 70%, 38%)`).
+- **Indira Deep Slate (`#0F1E46`)**: High-contrast typography, dark navigation panels, and card titles (`hsl(223, 65%, 16%)`).
 
-Suggested starting token:
+## 4.2 Modern Mobility Accents
 
-```css
---primary: 239 84% 60%;
-```
+- **Electric Cyan-Teal (`#00A2A5` / `#43CBD0`)**: Route polyline highlights, confirmed student badges, available seat tags, and interactive map waypoints (`hsl(181, 100%, 32%)`).
+- **Warm Tangerine (`#E85C0D`)**: Live ride indicators, urgency notifications, departure countdowns, and active status pulses (`hsl(22, 94%, 48%)`).
 
-Use the project's Tailwind/shadcn token system rather than hard-coding shades across components.
+## 4.3 Background and Surfaces
 
-## 4.2 Background and surfaces
+- **App Background**: Soft cool neutral `#F8F9FA` (`hsl(210, 20%, 98%)`).
+- **Card Surfaces**: Pure white `#FFFFFF` with crisp 1px borders in `#E5E7EB` (`hsl(220, 13%, 91%)`).
+- **Muted Text**: Slate gray `#6B7280` (`hsl(220, 9%, 46%)`).
 
-Use a very light neutral/cool-gray application background and white or near-white surfaces with subtle borders. Avoid excessive shadows.
-
-## 4.3 Semantic colors
+## 4.4 Semantic Colors
 
 ```text
-Success → green family
-Warning → amber family
-Error → red family
-Info → blue family
-Neutral → gray family
+Success → Emerald green (#10B981) for confirmed rides and successful pickups
+Warning → Amber (#F59E0B) for pending join requests and expiring rides
+Error   → Crimson red (#EF4444) for cancellations and rejected requests
+Info    → Indira Cyan (#00A2A5) for informative banners and notes
+Neutral → Slate gray (#64748B) for inactive items
 ```
 
 Never communicate status through color alone; use icon + label + color where appropriate.

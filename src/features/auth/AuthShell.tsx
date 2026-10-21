@@ -135,8 +135,8 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
     <div className="mx-auto w-full max-w-md px-4 py-8">
       <Card className="border-border shadow-lg">
         <CardHeader className="text-center pb-4">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <ShieldCheck className="h-7 w-7" />
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#003C84]/10 text-primary">
+            <ShieldCheck className="h-7 w-7 text-[#00A2A5]" />
           </div>
           <CardTitle className="text-xl">
             {mode === 'verification_pending'
@@ -161,15 +161,15 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
 
           {mode === 'verification_pending' ? (
             <div className="space-y-4 text-center py-2">
-              <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 text-left text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 space-y-2">
-                <div className="flex items-center gap-2 font-semibold">
-                  <Mail className="h-4 w-4" />
+              <div className="rounded-xl border border-[#00A2A5]/30 bg-[#00A2A5]/5 p-4 text-left text-xs text-primary dark:border-[#00A2A5]/40 dark:bg-[#00A2A5]/10 dark:text-foreground space-y-2">
+                <div className="flex items-center gap-2 font-semibold text-[#003C84] dark:text-[#43CBD0]">
+                  <Mail className="h-4 w-4 text-[#00A2A5]" />
                   <span>Institutional Domain Verification</span>
                 </div>
                 <p>
                   We enforce server-side validation to ensure only active ICEM students can join. Please check your college inbox at <strong>{email}</strong> to activate your account.
                 </p>
-                <p className="text-[11px] text-muted-foreground pt-1 border-t border-blue-200 dark:border-blue-800">
+                <p className="text-[11px] text-muted-foreground pt-1 border-t border-[#00A2A5]/20">
                   Privacy note: Your PRN ({prn || 'verified'}) is stored strictly in private backend tables and will never be exposed to other riders.
                 </p>
               </div>

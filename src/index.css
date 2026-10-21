@@ -4,83 +4,102 @@
 
 @layer base {
   :root {
-    /* Background & Surfaces */
-    --background: 220 14% 96%;
-    --foreground: 222.2 84% 4.9%;
+    /* Design.md §4.3: Background and Surfaces */
+    --background: 210 20% 98%;        /* #F8F9FA Soft cool neutral */
+    --foreground: 223 65% 16%;        /* #0F1E46 Indira Deep Slate */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;                /* #FFFFFF Pure white */
+    --card-foreground: 223 65% 16%;   /* #0F1E46 Indira Deep Slate */
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 223 65% 16%;
 
-    /* Primary: Indigo / Blue-violet family (Design.md §4.1) */
-    --primary: 239 84% 60%;
+    /* Design.md §4.1: Primary Brand Palette */
+    --primary: 213 100% 26%;          /* #003C84 Indira Deep Navy */
     --primary-foreground: 0 0% 100%;
 
+    --primary-hover: 213 70% 38%;     /* #1D59A3 Indira Royal Blue */
+    --primary-slate: 223 65% 16%;     /* #0F1E46 Indira Deep Slate */
+
     /* Secondary */
-    --secondary: 220 14.3% 95.9%;
-    --secondary-foreground: 220.9 39.3% 11%;
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 223 65% 16%;
 
     /* Muted */
-    --muted: 220 14.3% 95.9%;
-    --muted-foreground: 220 8.9% 46.1%;
+    --muted: 210 20% 94%;
+    --muted-foreground: 220 9% 46%;   /* #6B7280 Slate gray */
 
-    /* Accent */
-    --accent: 220 14.3% 95.9%;
-    --accent-foreground: 220.9 39.3% 11%;
+    /* Design.md §4.2: Modern Mobility Accents */
+    --accent: 181 100% 32%;           /* #00A2A5 Electric Cyan-Teal */
+    --accent-foreground: 0 0% 100%;
 
-    /* Destructive (Red) */
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --cyan: 181 100% 32%;             /* #00A2A5 */
+    --cyan-light: 182 61% 54%;        /* #43CBD0 */
+    --cyan-foreground: 0 0% 100%;
 
-    /* Semantic Functional Colors (Design.md §4.3) */
-    --success: 142 76% 36%;
-    --success-foreground: 355.7 100% 97.3%;
+    --tangerine: 22 94% 48%;          /* #E85C0D Warm Tangerine */
+    --tangerine-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 48 96% 89%;
+    /* Design.md §4.4: Semantic Colors */
+    --success: 160 84% 39%;           /* #10B981 Emerald green */
+    --success-foreground: 0 0% 100%;
 
-    --info: 217 91% 60%;
-    --info-foreground: 210 40% 98%;
+    --warning: 38 92% 50%;            /* #F59E0B Amber */
+    --warning-foreground: 0 0% 100%;
 
-    /* Borders & Inputs */
-    --border: 220 13% 91%;
+    --destructive: 0 84% 60%;         /* #EF4444 Crimson red */
+    --destructive-foreground: 0 0% 100%;
+
+    --info: 181 100% 32%;             /* #00A2A5 Indira Cyan */
+    --info-foreground: 0 0% 100%;
+
+    /* Borders, Inputs & Rings */
+    --border: 220 13% 91%;            /* #E5E7EB Crisp 1px border */
     --input: 220 13% 91%;
-    --ring: 239 84% 60%;
+    --ring: 213 70% 38%;              /* #1D59A3 Royal blue focus ring */
 
     /* Radiuses (Design.md §8) */
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 223 65% 10%;
+    --foreground: 210 20% 98%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 223 65% 14%;
+    --card-foreground: 210 20% 98%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 223 65% 14%;
+    --popover-foreground: 210 20% 98%;
 
-    --primary: 239 84% 67%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 213 80% 45%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --primary-hover: 213 70% 55%;
+    --primary-slate: 210 20% 98%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --secondary: 223 50% 20%;
+    --secondary-foreground: 210 20% 98%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --muted: 223 50% 20%;
+    --muted-foreground: 215 16% 65%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --accent: 181 100% 38%;
+    --accent-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 239 84% 67%;
+    --cyan: 181 100% 38%;
+    --cyan-light: 182 61% 54%;
+    --cyan-foreground: 0 0% 100%;
+
+    --tangerine: 22 94% 54%;
+    --tangerine-foreground: 0 0% 100%;
+
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 223 40% 25%;
+    --input: 223 40% 25%;
+    --ring: 181 100% 38%;
   }
 }
 

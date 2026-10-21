@@ -15,14 +15,18 @@ export function Alert({
   ...props
 }: AlertProps) {
   const icons = {
-    info: <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0" />,
+    // Design.md §4.4: Info -> Indira Cyan (#00A2A5)
+    info: <Info className="h-5 w-5 text-[#00A2A5] shrink-0" />,
+    // Success -> Emerald green (#10B981)
     success: <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />,
+    // Warning -> Amber (#F59E0B)
     warning: <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />,
+    // Error -> Crimson red (#EF4444)
     destructive: <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />,
   };
 
   const styles = {
-    info: 'bg-blue-50 text-blue-900 border-blue-200 dark:bg-blue-950/50 dark:text-blue-200 dark:border-blue-900',
+    info: 'bg-[#00A2A5]/10 text-[#003C84] border-[#00A2A5]/30 dark:bg-[#00A2A5]/20 dark:text-[#43CBD0] dark:border-[#00A2A5]/40',
     success: 'bg-emerald-50 text-emerald-900 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-900',
     warning: 'bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/50 dark:text-amber-200 dark:border-amber-900',
     destructive: 'bg-red-50 text-red-900 border-red-200 dark:bg-red-950/50 dark:text-red-200 dark:border-red-900',

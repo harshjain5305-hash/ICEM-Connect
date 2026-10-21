@@ -49,7 +49,15 @@ describe('App Shell & Design System (Phase 0)', () => {
       render(<App />);
     });
     expect(screen.getByText(/Phase 0 — Project Foundation Status/i)).toBeInTheDocument();
-    expect(screen.getByText(/Design System & Tokens/i)).toBeInTheDocument();
+    expect(screen.getByText(/Indira Institutional Theme/i)).toBeInTheDocument();
     expect(screen.getByText(/Supabase Backend Integration/i)).toBeInTheDocument();
+  });
+
+  it('renders with Indira ICEM brand palette and Electric Cyan accents', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+    const campusBadge = screen.getByText(/Campus Verified/i);
+    expect(campusBadge).toHaveClass('text-[#00A2A5]');
   });
 });

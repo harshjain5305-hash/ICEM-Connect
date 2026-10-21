@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Search, PlusCircle, CheckCircle2, Shield, Database, Lock, MapPin } from 'lucide-react';
+import { Search, PlusCircle, CheckCircle2, Shield, Database, Lock, Zap } from 'lucide-react';
 import { INSTITUTIONAL_DOMAIN } from '@/features/auth/domainValidation';
 
 interface HomeDashboardProps {
@@ -18,15 +18,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 }) => {
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
-      {/* Greeting Banner */}
-      <div className="rounded-2xl border border-primary/20 bg-linear-to-r from-primary/10 via-primary/5 to-transparent p-6 sm:p-8">
+      {/* Greeting Banner with Indira Brand Navy & Cyan Accents */}
+      <div className="rounded-2xl border border-primary/20 bg-linear-to-r from-primary/10 via-[#00A2A5]/5 to-transparent p-6 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
-              <Shield className="h-3.5 w-3.5" />
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-[#003C84]/10 border border-[#003C84]/20 px-3 py-1 text-xs font-semibold text-primary">
+              <Shield className="h-3.5 w-3.5 text-[#00A2A5]" />
               <span>ICEM Campus Network</span>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            <h1 className="text-2xl font-bold tracking-tight text-primary sm:text-3xl">
               {userEmail ? `Welcome, ${userEmail.split('@')[0]}` : 'Welcome to ICEM Connect'}
             </h1>
             <p className="max-w-xl text-sm text-muted-foreground">
@@ -36,10 +36,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
           <div className="flex flex-col gap-2.5 sm:flex-row">
             <Button onClick={onFindRideClick} variant="outline" className="gap-2">
-              <Search className="h-4 w-4 text-primary" />
+              <Search className="h-4 w-4 text-[#00A2A5]" />
               <span>Find a Ride</span>
             </Button>
-            <Button onClick={onOfferRideClick} className="gap-2 shadow-sm">
+            <Button onClick={onOfferRideClick} className="gap-2 shadow-sm bg-primary hover:bg-primary-hover">
               <PlusCircle className="h-4 w-4" />
               <span>Offer a Seat</span>
             </Button>
@@ -60,7 +60,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 Architectural baseline validated against PRD.md, Architecture.md, and Rules.md
               </CardDescription>
             </div>
-            <Badge variant="success" className="gap-1 px-3 py-1">
+            <Badge variant="cyan" className="gap-1 px-3 py-1">
               <CheckCircle2 className="h-3.5 w-3.5" />
               <span>Foundation Verified</span>
             </Badge>
@@ -71,10 +71,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             <div className="rounded-lg border border-border bg-muted/40 p-3.5 space-y-1 text-xs">
               <div className="font-semibold text-foreground flex items-center gap-1.5">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>Design System & Tokens</span>
+                <span>Indira Institutional Theme &amp; Tokens</span>
               </div>
               <p className="text-muted-foreground">
-                Tailwind CSS + semantic tokens (Indigo primary, Inter font, 44px touch targets, responsive 360px+).
+                Indira Deep Navy (<code>#003C84</code>), Royal Blue (<code>#1D59A3</code>), Cyan-Teal (<code>#00A2A5</code>), and Tangerine (<code>#E85C0D</code>) with Inter typography.
               </p>
             </div>
 
@@ -91,7 +91,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             <div className="rounded-lg border border-border bg-muted/40 p-3.5 space-y-1 text-xs">
               <div className="font-semibold text-foreground flex items-center gap-1.5">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>Institutional Auth & Domain Shell</span>
+                <span>Institutional Auth &amp; Domain Shell</span>
               </div>
               <p className="text-muted-foreground">
                 Strict server-side validation rejecting non-@<strong>{INSTITUTIONAL_DOMAIN}</strong> accounts.
@@ -101,7 +101,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             <div className="rounded-lg border border-border bg-muted/40 p-3.5 space-y-1 text-xs">
               <div className="font-semibold text-foreground flex items-center gap-1.5">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>PostgreSQL Migrations & RLS</span>
+                <span>PostgreSQL Migrations &amp; RLS</span>
               </div>
               <p className="text-muted-foreground">
                 Isolated <code>user_roles</code>, private PRN fields, and strict Row Level Security policies.
@@ -114,7 +114,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       {/* Core Principles & Privacy Commitment */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-4 space-y-2 text-xs">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#003C84]/10 text-primary">
             <Shield className="h-4 w-4" />
           </div>
           <h4 className="font-semibold text-foreground text-sm">Verified Students Only</h4>
@@ -124,7 +124,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4 space-y-2 text-xs">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#00A2A5]/10 text-[#00A2A5]">
             <Lock className="h-4 w-4" />
           </div>
           <h4 className="font-semibold text-foreground text-sm">Strict Data Privacy</h4>
@@ -134,8 +134,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4 space-y-2 text-xs">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <MapPin className="h-4 w-4" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E85C0D]/10 text-[#E85C0D]">
+            <Zap className="h-4 w-4" />
           </div>
           <h4 className="font-semibold text-foreground text-sm">Route-Based Sharing</h4>
           <p className="text-muted-foreground leading-relaxed">
