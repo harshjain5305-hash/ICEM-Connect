@@ -77,9 +77,9 @@ Rating / Reputation
 
 # 2. Current Overall State
 
-## State: PHASE 6 COMPLETE — JOIN REQUESTS, TRANSACTIONAL CAPACITY & NOTIFICATIONS OPERATIONAL
+## State: PHASE 7 COMPLETE — RATINGS, REPUTATION, USER BLOCKING, REPORTING & ADMIN MODERATION OPERATIONAL
 
-The join request lifecycle (`PENDING` -> `ACCEPTED` / `REJECTED` / `CANCELLED`), atomic capacity allocation and overbooking prevention, optional specific-area pickup note (Design.md §73), `JoinRequestModal`, `HostRequestsSection`, `MyRequestsView`, in-app notifications service, and `NotificationBell` have been implemented and verified according to `Phases.md §10`, `PRD.md §5 (UC-04, UC-05) & §9`, `Rules.md §10-12`, and `Architecture.md §8, §10, §47.2`.
+Post-trip ratings and atomic reputation updates (`submit_ride_rating`), private incident reporting (`create_user_report` & `resolve_report`), bidirectional user blocking (`block_user`, `unblock_user`, `matching.service.ts` exclusion, and `request.service.ts` join block), peer management in `ProfileView`, and the server-authoritative 4-tab administrative moderation console (`AdminPanel.tsx` with Campus Metrics, Incident Resolution, Student Registry with PRN audit, and Campus Ride Moderation) have been implemented and verified according to `Phases.md §11`, `PRD.md §15, §16`, `Rules.md §22–§24`, and `Architecture.md §9, §11, §13, §16`.
 
 Current state:
 
@@ -89,7 +89,7 @@ Current state:
 - Development rules: **documented**
 - Development phases: **documented**
 - Design system/UX: **implemented with official Indira ICEM brand palette**
-- Project memory: **updated with Phase 6 verified evidence**
+- Project memory: **updated with Phase 7 verified evidence**
 - Frontend foundation: **VERIFIED & OPERATIONAL**
 - Backend connection & health service: **VERIFIED & OPERATIONAL**
 - Database baseline migration & RLS: **VERIFIED in supabase/migrations/**
@@ -98,7 +98,7 @@ Current state:
 - Role management (`STUDENT`, `ADMIN`): **VERIFIED & TESTED**
 - Route & API authorization guards: **VERIFIED & TESTED (403 on unauthorized access)**
 - Locations catalog & search: **VERIFIED & TESTED (15 authentic ICEM/PCMC transit nodes)**
-- Relational core database schema: **VERIFIED in supabase/migrations/ (11 tables + RLS + stored procedures)**
+- Relational core database schema: **VERIFIED in supabase/migrations/ (12 tables + RLS + stored procedures)**
 - Ride creation flow & draft saving: **VERIFIED & TESTED (`OfferRideForm`)**
 - Deterministic ride state machine: **VERIFIED & TESTED (`ride.state.ts` + stored procedure)**
 - Host ride management dashboard: **VERIFIED & TESTED (`MyRidesView` + `RideDetailModal`)**
@@ -114,11 +114,15 @@ Current state:
 - Passenger request tracking & cancellation: **VERIFIED & TESTED (`MyRequestsView` + `JoinRequestModal` navigation)**
 - In-app notification engine & bell popover: **VERIFIED & TESTED (`notificationService` + `NotificationBell`)**
 - Hybrid storage sync & fallback deduplication: **VERIFIED & TESTED (`request.repository.ts` + `notification.repository.ts`)**
-- Database Phase 6 RPC migration: **VERIFIED in `20261021000006_phase6_join_requests_capacity.sql`**
-- Test suite (Vitest): **127/127 PASSING across 25 test suites**
+- Database Phase 6 RPC migration: **VERIFIED in `20261021000006_phase6_join_requests_capacity.sql` & `20261021000007_phase6_fix_rpc_and_policies.sql`**
+- Database Phase 7 RPC migration: **VERIFIED in `20261021000008_phase7_ratings_moderation.sql`**
+- Post-trip 1–5 star ratings & atomic reputation scoring: **VERIFIED & TESTED (`RatingModal` + `rating.service.ts`)**
+- Private safety & misconduct incident reporting: **VERIFIED & TESTED (`ReportModal` + `moderation.service.ts`)**
+- Bidirectional user blocking with search & request exclusion: **VERIFIED & TESTED (`BlockUserModal` + `ProfileView`)**
+- Server-authoritative Campus Admin Console: **VERIFIED & TESTED (`AdminPanel.tsx` + `admin.service.ts`)**
+- Test suite (Vitest): **156/156 PASSING across 28 test suites**
 - Production bundle build: **VERIFIED (0 TypeScript errors)**
-- Ratings, Reports & Admin Moderation: **next target (Phase 7)**
-- Realtime implementation: **pending (scheduled for Phase 8)**
+- Realtime implementation: **next target (Phase 8)**
 - Live-location implementation: **pending (scheduled for Phase 9)**
 - Deployment: **pending (scheduled for Phase 11)**
 - Pilot usage: **not started (scheduled for Phase 11)**
@@ -1196,7 +1200,51 @@ These are documented requirements only. They must not be treated as implemented 
 
 ## Changelog
 
-### 2026-10-21 — Phase 6 RPC & Schema Hotfix — Stored Procedures, UUID Validation & Policy Hardening
+### 2026-10-21 — Phase 7 — Ratings + Reporting + User Blocking + Admin Moderation Implemented & Verified
+
+State:
+- Transitioned project state from Phase 6 to **Phase 7 Complete**.
+- Created database migration `supabase/migrations/20261021000008_phase7_ratings_moderation.sql`:
+  - Created `public.user_blocks` table with unique constraint (`uq_user_blocks`), blocker/blocked indices, and directional RLS policies.
+  - Added moderation resolution fields to `public.reports` (`resolved_by`, `resolved_at`, `resolution_note`).
+  - Stored procedures: `submit_ride_rating()` (atomic score update, duplicate block `uq_ride_rating`, participant check, self-rating guard), `create_user_report()` (private incident submission, reporter/reported distinction), `resolve_report()` (admin resolution), `block_user()`, `unblock_user()`.
+  - Added execute grants for `anon, authenticated, service_role`.
+- Implemented **Ratings & Reputation Domain Layer**:
+  - `rating.types.ts`: `RideRating`, `CreateRatingInput`, `RatingResult`.
+  - `rating.schema.ts`: Zod schema `createRatingSchema` enforcing 1–5 stars and optional review text.
+  - `rating.repository.ts`: Supabase RPC with `localStorage` fallback, atomic reputation update formula ($new\_avg = \frac{old\_avg \times old\_count + score}{new\_count}$), and automatic in-app notification dispatch (`RATING_RECEIVED`).
+  - `rating.service.ts`: Eligibility enforcement (ride must be `COMPLETED`, reviewer and reviewee must be confirmed participants/host, duplicate block).
+  - `RatingModal.tsx`: 5-star interactive picker with feedback notes.
+- Implemented **Safety Reporting & User Blocking Layer**:
+  - `moderation.types.ts`: Categories (`UNSAFE_DRIVING`, `HARASSMENT`, `INAPPROPRIATE_BEHAVIOUR`, `NO_SHOW`, `MISREPRESENTATION`, `ROUTE_PICKUP_ABUSE`, `SUSPICIOUS_ACTIVITY`, `OTHER`), statuses (`PENDING`, `REVIEWED`, `RESOLVED`, `DISMISSED`), `UserReport`, `UserBlock`.
+  - `moderation.schema.ts`: Zod schemas `createReportSchema`, `createBlockSchema`, `updateReportStatusSchema`.
+  - `moderation.repository.ts`: Supabase RPC & local storage fallback, bidirectional `isBlocked`, `getBlockedUserIds`, `listMyReports`, `listAllReports`.
+  - `moderation.service.ts`: Invariant validations, self-report and self-block guards.
+  - `ReportModal.tsx`: Confidential incident reporting modal with campus guidelines note.
+  - `BlockUserModal.tsx`: Peer blocking confirmation modal with explanation of bidirectional isolation.
+- Integrated **Safety & Blocking Invariants Across Application**:
+  - `matching.service.ts`: Filters out rides hosted by blocked users or hosts who blocked the passenger.
+  - `request.service.ts`: Rejects join request creation if interaction is blocked in either direction (`isBlocked`).
+  - `MyRequestsView.tsx`: Displays `[Rate Host]` on completed rides, plus `[Report Host]` and `[Block Host]`.
+  - `HostRequestsSection.tsx`: Displays `[Rate Passenger]`, `[Report]`, and `[Block]` on confirmed participants of completed rides.
+  - `ProfileView.tsx`: Lists blocked campus peers with one-click `[Unblock]` action.
+  - `notification.types.ts` & `notification.schema.ts`: Added `'RATING_RECEIVED'` and `'ADMIN_ALERT'` notification types.
+- Implemented **Administrative Moderation Console**:
+  - `admin.service.ts`: Server-authoritative `requireAdmin` guard, `getCampusMetrics`, `listReports`, `resolveReport`, `listAllRides`, `adminCancelRide` (with automatic host and participant alerts), `getStudents`, and `updateStudentStatus`.
+  - `AdminPanel.tsx`: 4-tab administrative suite:
+    1. *Campus Metrics*: Total students, active rides, completed rides, cancellation count, pending reports.
+    2. *Incident Reports*: Filter by status, review details, view reporter/reported student info, submit resolution notes.
+    3. *Student Registry*: Search students, inspect private PRN for administrative identity verification, suspend or activate accounts.
+    4. *Campus Ride Moderation*: Inspect all rides, emergency ride force-cancellation with participant notifications.
+- Created unit and integration test suites:
+  - `src/features/ratings/rating.service.test.ts`: 6 tests verifying COMPLETED requirement, duplicate block, self-rating block, host and passenger rating flows.
+  - `src/features/moderation/moderation.service.test.ts`: 11 tests verifying report submission, self-report rejection, reporter privacy, resolution, self-block rejection, bidirectional blocking, unblocking, and blocked ID aggregation.
+  - `src/features/admin/admin.service.test.ts`: 10 tests verifying admin role authorization guard (403 for ordinary students), campus metrics, report resolution, administrative ride cancellation with participant alerts, and student suspension.
+  - Added blocking tests to `matching.service.test.ts` and `request.service.test.ts`.
+- Verified test suite: **156/156 tests passing across 28 test suites**.
+- Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+- Verified production build: **clean bundle generated** (`npm run build`).
+- Set next implementation target to **Phase 8 — Realtime Foundation + Active Ride Sessions**.
 
 State:
 - Diagnosed live Supabase errors reported in browser network log:

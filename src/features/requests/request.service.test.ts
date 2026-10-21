@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { requestService } from './request.service';
 import { rideService } from '@/features/rides/ride.service';
 import { notificationService } from '@/features/notifications/notification.service';
+import { moderationService } from '@/features/moderation/moderation.service';
 
 describe('Join Request Service & Transactional Capacity (Phase 6)', () => {
   const hostId = 'student_host_1';
@@ -199,5 +200,28 @@ describe('Join Request Service & Transactional Capacity (Phase 6)', () => {
     // After cancel: seat is restored back to 2
     ride = await rideService.getRide(testRideId);
     expect(ride.available_seats).toBe(2);
+  });
+
+  it('rejects join requests between blocked peers in either direction (Rules.md §23)', async () => {
+    // Host blocks passenger
+    await moderationService.blockUser(hostId, { blocked_id: passenger1 });
+
+    await expect(
+      requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+      })
+    ).rejects.toThrow(/blocking/i);
+
+    // Unblock and verify passenger blocking host also rejects
+    await moderationService.unblockUser(hostId, passenger1);
+    await moderationService.blockUser(passenger1, { blocked_id: hostId });
+
+    await expect(
+      requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+      })
+    ).rejects.toThrow(/blocking/i);
   });
 });

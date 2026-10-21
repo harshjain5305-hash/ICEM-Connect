@@ -1,5 +1,6 @@
 import { locationService } from '@/features/locations/location.service';
 import { rideRepository } from '@/features/rides/ride.repository';
+import { moderationService } from '@/features/moderation/moderation.service';
 import type { RideWaypoint } from '@/features/rides/ride.types';
 import type { Location } from '@/features/locations/location.schema';
 import { rideSearchSchema } from './matching.schema';
@@ -49,6 +50,9 @@ export const matchingService = {
 
     // 2. STAGE 1: Fast filtering by date and eligible status
     const candidateRides = await rideRepository.listPublishedRides(query.departure_date);
+    const blockedUserIds = query.passenger_id
+      ? await moderationService.getBlockedUserIds(query.passenger_id)
+      : new Set<string>();
 
     const matchedCandidates: MatchedRideCandidate[] = [];
 
@@ -56,6 +60,11 @@ export const matchingService = {
     for (const ride of candidateRides) {
       // Filter out host's own rides (host cannot join own ride as passenger)
       if (query.passenger_id && ride.host_id === query.passenger_id) {
+        continue;
+      }
+
+      // Hard filter: Account blocking invariant (Rules.md §23)
+      if (query.passenger_id && blockedUserIds.has(ride.host_id)) {
         continue;
       }
 

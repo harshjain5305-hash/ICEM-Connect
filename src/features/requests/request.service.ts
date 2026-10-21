@@ -1,4 +1,6 @@
 import { requestRepository } from './request.repository';
+import { rideRepository } from '@/features/rides/ride.repository';
+import { moderationService } from '@/features/moderation/moderation.service';
 import {
   createJoinRequestSchema,
   rejectJoinRequestSchema,
@@ -40,6 +42,19 @@ export const requestService = {
     }
 
     const input: CreateJoinRequestInput = parseResult.data;
+
+    // Check account blocking invariant (Rules.md §23)
+    const ride = await rideRepository.getRideById(input.ride_id);
+    if (ride) {
+      const isBlocked = await moderationService.isBlocked(studentId, ride.host_id);
+      if (isBlocked) {
+        throw new RequestServiceError(
+          'BLOCKED_INTERACTION',
+          'Cannot request a ride with this user due to account blocking'
+        );
+      }
+    }
+
     try {
       return await requestRepository.createRequest(studentId, input);
     } catch (err: unknown) {

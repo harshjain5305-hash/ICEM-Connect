@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { JoinRequest } from './request.types';
+import type { JoinRequest, PublicStudentInfo } from './request.types';
 import { requestService } from './request.service';
 import { useAuth } from '@/features/auth/useAuth';
+import { ratingService } from '@/features/ratings/rating.service';
+import { RatingModal } from '@/features/ratings/RatingModal';
+import { ReportModal } from '@/features/moderation/ReportModal';
+import { BlockUserModal } from '@/features/moderation/BlockUserModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
@@ -14,6 +18,9 @@ import {
   XCircle,
   Inbox,
   RefreshCw,
+  Star,
+  ShieldAlert,
+  Ban,
 } from 'lucide-react';
 
 export interface MyRequestsViewProps {
@@ -26,6 +33,10 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [ratingReq, setRatingReq] = useState<JoinRequest | null>(null);
+  const [reportUser, setReportUser] = useState<{ user: PublicStudentInfo; rideId?: string } | null>(null);
+  const [blockUser, setBlockUser] = useState<PublicStudentInfo | null>(null);
+  const [hasRatedMap, setHasRatedMap] = useState<Record<string, boolean>>({});
 
   const fetchRequests = useCallback(async () => {
     if (!user) return;
@@ -44,6 +55,20 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
+
+  useEffect(() => {
+    if (!user) return;
+    const checkRated = async () => {
+      const map: Record<string, boolean> = {};
+      for (const req of requests) {
+        if (req.status === 'ACCEPTED' && req.ride?.status === 'COMPLETED' && req.ride.host_id) {
+          map[req.id] = await ratingService.hasRated(req.ride_id, user.id, req.ride.host_id);
+        }
+      }
+      setHasRatedMap(map);
+    };
+    checkRated();
+  }, [requests, user]);
 
   const handleCancel = async (requestId: string) => {
     if (!user) return;
@@ -197,25 +222,130 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
                   )}
                 </div>
 
-                {/* CANCEL ACTION FOR PENDING OR ACCEPTED */}
-                {(req.status === 'PENDING' || req.status === 'ACCEPTED') && (
-                  <div className="pt-2 border-t border-border/60 flex justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={cancellingId === req.id}
-                      onClick={() => handleCancel(req.id)}
-                      className="h-7 text-xs text-destructive hover:bg-destructive/10 gap-1"
-                    >
-                      <XCircle className="h-3.5 w-3.5" />
-                      {cancellingId === req.id ? 'Cancelling...' : 'Cancel Request'}
-                    </Button>
+                {/* ACTIONS */}
+                <div className="pt-2 border-t border-border/60 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5">
+                    {req.ride?.host_id && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReportUser({
+                              user: {
+                                id: req.ride!.host_id,
+                                name: 'Ride Host',
+                                department: 'Host',
+                                year: 3,
+                                rating: 5.0,
+                                is_verified: true,
+                              },
+                              rideId: req.ride_id,
+                            })
+                          }
+                          className="text-[11px] text-muted-foreground hover:text-red-600 flex items-center gap-1 transition-colors"
+                        >
+                          <ShieldAlert className="h-3.5 w-3.5" /> Report Host
+                        </button>
+                        <span className="text-muted-foreground/40">&bull;</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setBlockUser({
+                              id: req.ride!.host_id,
+                              name: 'Ride Host',
+                              department: 'Host',
+                              year: 3,
+                              rating: 5.0,
+                              is_verified: true,
+                            })
+                          }
+                          className="text-[11px] text-muted-foreground hover:text-amber-700 flex items-center gap-1 transition-colors"
+                        >
+                          <Ban className="h-3 w-3" /> Block
+                        </button>
+                      </>
+                    )}
                   </div>
-                )}
+
+                  <div className="flex items-center gap-2">
+                    {/* RATE COMPLETED TRIP */}
+                    {req.status === 'ACCEPTED' && req.ride?.status === 'COMPLETED' && (
+                      hasRatedMap[req.id] ? (
+                        <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                          <Star className="h-3 w-3 fill-current text-[#EAA023]" /> Rated Host
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => setRatingReq(req)}
+                          className="h-7 text-xs bg-[#003C84] hover:bg-[#1D59A3] text-white gap-1"
+                        >
+                          <Star className="h-3 w-3 fill-current text-[#EAA023]" /> Rate Host
+                        </Button>
+                      )
+                    )}
+
+                    {/* CANCEL ACTION FOR PENDING OR ACCEPTED */}
+                    {(req.status === 'PENDING' || (req.status === 'ACCEPTED' && req.ride?.status !== 'COMPLETED')) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={cancellingId === req.id}
+                        onClick={() => handleCancel(req.id)}
+                        className="h-7 text-xs text-destructive hover:bg-destructive/10 gap-1"
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                        {cancellingId === req.id ? 'Cancelling...' : 'Cancel Request'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ))}
         </div>
+      )}
+
+      {/* RATING MODAL */}
+      {ratingReq && ratingReq.ride && (
+        <RatingModal
+          isOpen={Boolean(ratingReq)}
+          onClose={() => setRatingReq(null)}
+          ride={ratingReq.ride}
+          reviewee={{
+            id: ratingReq.ride.host_id,
+            name: 'Ride Host',
+            department: 'Host',
+            year: 3,
+            rating: 5.0,
+            is_verified: true,
+          }}
+          onRatingSubmitted={() => {
+            fetchRequests();
+          }}
+        />
+      )}
+
+      {/* REPORT MODAL */}
+      {reportUser && (
+        <ReportModal
+          isOpen={Boolean(reportUser)}
+          onClose={() => setReportUser(null)}
+          reportedStudent={reportUser.user}
+          rideId={reportUser.rideId}
+        />
+      )}
+
+      {/* BLOCK USER MODAL */}
+      {blockUser && (
+        <BlockUserModal
+          isOpen={Boolean(blockUser)}
+          onClose={() => setBlockUser(null)}
+          targetStudent={blockUser}
+          onBlocked={() => {
+            fetchRequests();
+          }}
+        />
       )}
     </div>
   );

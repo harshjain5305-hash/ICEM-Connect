@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth/useAuth';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Alert } from '@/components/ui/Alert';
 import { DEPARTMENTS } from '@/features/auth/auth.schema';
-import { User, ShieldCheck, Star, Lock, LogOut, Check, Edit2 } from 'lucide-react';
+import { moderationService } from '@/features/moderation/moderation.service';
+import type { UserBlock } from '@/features/moderation/moderation.types';
+import { User, ShieldCheck, Star, Lock, LogOut, Check, Edit2, ShieldOff } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
   const { profile, logout, updateProfile, roles } = useAuth();
@@ -14,6 +16,24 @@ export const ProfileView: React.FC = () => {
   const [year, setYear] = useState<number | ''>(profile?.year || '');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'destructive'; text: string } | null>(null);
+  const [blockedUsers, setBlockedUsers] = useState<UserBlock[]>([]);
+
+  useEffect(() => {
+    if (profile?.id) {
+      moderationService.listBlockedUsers(profile.id).then(setBlockedUsers).catch(() => {});
+    }
+  }, [profile?.id]);
+
+  const handleUnblock = async (blockedId: string) => {
+    if (!profile) return;
+    try {
+      await moderationService.unblockUser(profile.id, blockedId);
+      setBlockedUsers((prev) => prev.filter((b) => b.blocked_id !== blockedId));
+      setMessage({ type: 'success', text: 'Peer unblocked successfully.' });
+    } catch {
+      setMessage({ type: 'destructive', text: 'Failed to unblock peer.' });
+    }
+  };
 
   if (!profile) return null;
 
@@ -180,6 +200,41 @@ export const ProfileView: React.FC = () => {
                 >
                   <Edit2 className="h-3.5 w-3.5 text-primary" /> Edit Profile Details
                 </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Blocked Accounts Management */}
+          {blockedUsers.length > 0 && (
+            <div className="pt-3 border-t border-border space-y-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <ShieldOff className="h-3.5 w-3.5 text-amber-600" />
+                <span>Blocked Accounts ({blockedUsers.length})</span>
+              </div>
+              <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-muted/20">
+                {blockedUsers.map((b) => (
+                  <div
+                    key={b.id}
+                    className="flex items-center justify-between p-2.5 text-xs"
+                  >
+                    <div>
+                      <div className="font-medium text-foreground">
+                        {b.blocked_user?.name || 'Blocked Peer'}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {b.blocked_user?.department || 'ICEM Student'}
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleUnblock(b.blocked_id)}
+                      className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground"
+                    >
+                      Unblock
+                    </Button>
+                  </div>
+                ))}
               </div>
             </div>
           )}

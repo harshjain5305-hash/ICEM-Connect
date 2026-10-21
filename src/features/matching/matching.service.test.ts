@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { matchingService } from './matching.service';
 import { rideService } from '@/features/rides/ride.service';
+import { moderationService } from '@/features/moderation/moderation.service';
 
 describe('Deterministic Route-Segment Matching Engine (Phase 5)', () => {
   const hostId = 'student_host_404';
@@ -187,5 +188,32 @@ describe('Deterministic Route-Segment Matching Engine (Phase 5)', () => {
     // Ride A must be ranked #1
     expect(result.candidates[0].ride.host_id).toBe('host_a');
     expect(result.candidates[0].matchScore).toBeGreaterThan(result.candidates[1].matchScore);
+  });
+
+  it('filters out rides hosted by users blocked by or blocking the searcher (Rules.md §23)', async () => {
+    await setupHostRide();
+
+    // Before blocking: match found
+    const initialResult = await matchingService.findCompatibleRides({
+      pickup_location_id: 'loc_icem_campus',
+      drop_location_id: 'loc_bhosari_stand',
+      departure_date: departureDate,
+      departure_time: '17:30',
+      passenger_id: passengerId,
+    });
+    expect(initialResult.candidates.length).toBe(1);
+
+    // Block the host
+    await moderationService.blockUser(passengerId, { blocked_id: hostId });
+
+    // After blocking: host ride is completely excluded
+    const blockedResult = await matchingService.findCompatibleRides({
+      pickup_location_id: 'loc_icem_campus',
+      drop_location_id: 'loc_bhosari_stand',
+      departure_date: departureDate,
+      departure_time: '17:30',
+      passenger_id: passengerId,
+    });
+    expect(blockedResult.candidates.length).toBe(0);
   });
 });

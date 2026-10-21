@@ -253,7 +253,7 @@ export const authService = {
       // Auto-provision demo account if logging in with valid @indiraicem.ac.in email
       const isDemoAdmin = email === DEMO_ADMIN_EMAIL;
       const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-      const userId = `student_${Date.now()}`;
+      const userId = `student_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const roles: UserRoleType[] = isDemoAdmin ? ['STUDENT', 'ADMIN'] : ['STUDENT'];
 
       userData = {
@@ -492,6 +492,65 @@ export const authService = {
     for (const email of Object.keys(users)) {
       if (users[email].user.id === targetStudentId) {
         users[email].profile.status = status;
+        saveStoredUsers(users);
+        break;
+      }
+    }
+  },
+
+  /**
+   * Retrieves user roles.
+   */
+  async getUserRoles(userId: string): Promise<UserRoleType[]> {
+    const isLive = isSupabaseConfigured();
+    if (isLive) {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
+      const roles = (data || []).map((r) => r.role as UserRoleType);
+      return roles.length > 0 ? roles : ['STUDENT'];
+    }
+
+    const session = await this.getCurrentSession();
+    if (session && session.user.id === userId) {
+      return session.roles;
+    }
+
+    const users = getStoredUsers();
+    for (const email of Object.keys(users)) {
+      if (users[email].user.id === userId) {
+        return users[email].roles;
+      }
+    }
+    return ['STUDENT'];
+  },
+
+  /**
+   * Atomically updates a student's reputation (rating average and count).
+   */
+  async updateStudentReputation(
+    userId: string,
+    ratingAverage: number,
+    ratingCount: number
+  ): Promise<void> {
+    const isLive = isSupabaseConfigured();
+    if (isLive) {
+      await supabase
+        .from('students')
+        .update({
+          rating_average: ratingAverage,
+          rating_count: ratingCount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+    }
+
+    const users = getStoredUsers();
+    for (const email of Object.keys(users)) {
+      if (users[email].user.id === userId) {
+        users[email].profile.rating_average = ratingAverage;
+        users[email].profile.rating_count = ratingCount;
         saveStoredUsers(users);
         break;
       }

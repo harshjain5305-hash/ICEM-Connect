@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Ride } from '@/features/rides/ride.types';
-import type { JoinRequest, RideParticipant } from './request.types';
+import type { JoinRequest, RideParticipant, PublicStudentInfo } from './request.types';
 import { requestService } from './request.service';
 import { useAuth } from '@/features/auth/useAuth';
+import { ratingService } from '@/features/ratings/rating.service';
+import { RatingModal } from '@/features/ratings/RatingModal';
+import { ReportModal } from '@/features/moderation/ReportModal';
+import { BlockUserModal } from '@/features/moderation/BlockUserModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import {
@@ -13,6 +17,8 @@ import {
   Clock,
   AlertCircle,
   ShieldCheck,
+  ShieldAlert,
+  Ban,
 } from 'lucide-react';
 
 export interface HostRequestsSectionProps {
@@ -30,6 +36,10 @@ export const HostRequestsSection: React.FC<HostRequestsSectionProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [ratingParticipant, setRatingParticipant] = useState<PublicStudentInfo | null>(null);
+  const [reportParticipant, setReportParticipant] = useState<PublicStudentInfo | null>(null);
+  const [blockParticipant, setBlockParticipant] = useState<PublicStudentInfo | null>(null);
+  const [hasRatedMap, setHasRatedMap] = useState<Record<string, boolean>>({});
 
   const isHost = Boolean(user && user.id === ride.host_id);
 
@@ -53,6 +63,18 @@ export const HostRequestsSection: React.FC<HostRequestsSectionProps> = ({
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!user || ride.status !== 'COMPLETED') return;
+    const checkRated = async () => {
+      const map: Record<string, boolean> = {};
+      for (const p of participants) {
+        map[p.student_id] = await ratingService.hasRated(ride.id, user.id, p.student_id);
+      }
+      setHasRatedMap(map);
+    };
+    checkRated();
+  }, [participants, ride.id, ride.status, user]);
 
   const handleAccept = async (requestId: string) => {
     if (!user) return;
@@ -145,9 +167,48 @@ export const HostRequestsSection: React.FC<HostRequestsSectionProps> = ({
                   </div>
                 </div>
 
-                <Badge variant="success" className="text-[10px]">
-                  {p.seat_count} Seat{p.seat_count > 1 ? 's' : ''} Confirmed
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="success" className="text-[10px]">
+                    {p.seat_count} Seat{p.seat_count > 1 ? 's' : ''} Confirmed
+                  </Badge>
+
+                  {ride.status === 'COMPLETED' && p.student && (
+                    hasRatedMap[p.student_id] ? (
+                      <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                        <Star className="h-3 w-3 fill-current text-[#EAA023]" /> Rated
+                      </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => setRatingParticipant(p.student!)}
+                        className="h-6 text-[11px] px-2 bg-[#003C84] hover:bg-[#1D59A3] text-white gap-1"
+                      >
+                        <Star className="h-3 w-3 fill-current text-[#EAA023]" /> Rate
+                      </Button>
+                    )
+                  )}
+
+                  {p.student && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setReportParticipant(p.student!)}
+                        title="Report Participant"
+                        className="p-1 rounded text-muted-foreground hover:text-red-600 transition-colors"
+                      >
+                        <ShieldAlert className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBlockParticipant(p.student!)}
+                        title="Block Participant"
+                        className="p-1 rounded text-muted-foreground hover:text-amber-700 transition-colors"
+                      >
+                        <Ban className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -252,6 +313,41 @@ export const HostRequestsSection: React.FC<HostRequestsSectionProps> = ({
           </div>
         )}
       </div>
+
+      {/* RATING MODAL */}
+      {ratingParticipant && (
+        <RatingModal
+          isOpen={Boolean(ratingParticipant)}
+          onClose={() => setRatingParticipant(null)}
+          ride={ride}
+          reviewee={ratingParticipant}
+          onRatingSubmitted={() => {
+            loadData();
+          }}
+        />
+      )}
+
+      {/* REPORT MODAL */}
+      {reportParticipant && (
+        <ReportModal
+          isOpen={Boolean(reportParticipant)}
+          onClose={() => setReportParticipant(null)}
+          reportedStudent={reportParticipant}
+          rideId={ride.id}
+        />
+      )}
+
+      {/* BLOCK MODAL */}
+      {blockParticipant && (
+        <BlockUserModal
+          isOpen={Boolean(blockParticipant)}
+          onClose={() => setBlockParticipant(null)}
+          targetStudent={blockParticipant}
+          onBlocked={() => {
+            loadData();
+          }}
+        />
+      )}
     </div>
   );
 };

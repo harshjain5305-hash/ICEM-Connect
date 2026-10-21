@@ -5,6 +5,8 @@ export type NotificationType =
   | 'REQUEST_CANCELLED'
   | 'RIDE_CANCELLED'
   | 'RIDE_CONFIRMED'
+  | 'RATING_RECEIVED'
+  | 'ADMIN_ALERT'
   | 'SYSTEM';
 
 export interface AppNotification {
