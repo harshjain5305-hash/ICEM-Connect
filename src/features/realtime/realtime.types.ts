@@ -27,7 +27,10 @@ export type RideEventType =
   | 'ride:join_request_created'
   | 'ride:join_request_accepted'
   | 'ride:join_request_rejected'
-  | 'ride:seat_capacity_updated';
+  | 'ride:seat_capacity_updated'
+  | 'location:started'
+  | 'location:update'
+  | 'location:stopped';
 
 export interface BaseRideEvent<T extends RideEventType, P> {
   type: T;
@@ -118,6 +121,39 @@ export type SeatCapacityUpdatedEvent = BaseRideEvent<
   }
 >;
 
+export interface LocationUpdatePayload {
+  rideId: string;
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number;
+  heading: number | null;
+  speed: number | null;
+  timestamp: string;
+}
+
+export type LocationStartedEvent = BaseRideEvent<
+  'location:started',
+  {
+    rideId: string;
+    hostId: string;
+    startedAt: string;
+  }
+>;
+
+export type LocationUpdateEvent = BaseRideEvent<
+  'location:update',
+  LocationUpdatePayload
+>;
+
+export type LocationStoppedEvent = BaseRideEvent<
+  'location:stopped',
+  {
+    rideId: string;
+    hostId: string;
+    stoppedAt: string;
+  }
+>;
+
 export type RealtimeRideEvent =
   | SessionStartedEvent
   | SessionEndedEvent
@@ -127,7 +163,10 @@ export type RealtimeRideEvent =
   | JoinRequestCreatedEvent
   | JoinRequestAcceptedEvent
   | JoinRequestRejectedEvent
-  | SeatCapacityUpdatedEvent;
+  | SeatCapacityUpdatedEvent
+  | LocationStartedEvent
+  | LocationUpdateEvent
+  | LocationStoppedEvent;
 
 export interface RoomPresenceUser {
   user_id: string;

@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { Radio, Users, AlertTriangle, Play, Square, RefreshCw } from 'lucide-react';
+import { Radio, Users, AlertTriangle, Play, Square, RefreshCw, Map, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useRideRoom } from './useRideRoom';
+import { useGeolocationWatcher } from '@/features/location-tracking/useGeolocationWatcher';
+import { LiveRideTrackingMap } from '@/features/location-tracking/LiveRideTrackingMap';
+import type { LiveLocationUpdate } from '@/features/location-tracking/location.types';
 import type { Ride } from '@/features/rides/ride.types';
 import type { StudentProfile } from '@/features/auth/auth.types';
 
@@ -20,6 +23,8 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
   onRateHost,
 }) => {
   const isHost = Boolean(currentUser && currentUser.id === ride.host_id);
+  const [liveLocation, setLiveLocation] = useState<LiveLocationUpdate | null>(null);
+  const [showLiveMap, setShowLiveMap] = useState<boolean>(true);
 
   const {
     connectionState,
@@ -38,10 +43,36 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
       if (event.type === 'ride:status_changed') {
         onStatusChanged?.(event.payload.new_status);
       }
+      if (event.type === 'location:update') {
+        setLiveLocation({
+          ride_id: event.payload.rideId,
+          latitude: event.payload.latitude,
+          longitude: event.payload.longitude,
+          accuracy: event.payload.accuracyMeters,
+          heading: event.payload.heading,
+          speed: event.payload.speed,
+          timestamp: event.payload.timestamp,
+        });
+      }
     },
   });
 
   const [confirmComplete, setConfirmComplete] = useState(false);
+
+  const isRideActive = ride.status === 'ACTIVE' || activeSession?.status === 'ACTIVE';
+
+  // Host GPS location watcher
+  const {
+    currentLocation: hostGeoLocation,
+    status: geoStatus,
+  } = useGeolocationWatcher({
+    rideId: ride.id,
+    hostId: currentUser?.id || '',
+    isActive: isRideActive && isHost,
+    enabled: isHost,
+  });
+
+  const effectiveLocation = isHost ? hostGeoLocation : liveLocation;
 
   const handleStart = async () => {
     try {
@@ -96,8 +127,6 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
         );
     }
   })();
-
-  const isRideActive = ride.status === 'ACTIVE' || activeSession?.status === 'ACTIVE';
 
   return (
     <div
@@ -200,8 +229,49 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
               Rate Host Experience
             </Button>
           )}
+
+          {isRideActive && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowLiveMap((prev) => !prev)}
+              className="h-8 text-xs text-primary gap-1"
+            >
+              <Map className="w-3.5 h-3.5" />
+              {showLiveMap ? (
+                <>
+                  <span>Hide Live Map</span>
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </>
+              ) : (
+                <>
+                  <span>View Live Map</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Geolocation Permission Denial Warning (Phases.md §13) */}
+      {geoStatus === 'PERMISSION_DENIED' && isHost && (
+        <div className="mt-2.5 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+          <span>Location permission denied by browser. Ride continues without live tracking.</span>
+        </div>
+      )}
+
+      {/* LIVE INTERACTIVE TRACKING MAP (Phase 9) */}
+      {isRideActive && showLiveMap && (
+        <div className="mt-3">
+          <LiveRideTrackingMap
+            ride={ride}
+            liveLocation={effectiveLocation}
+            isHost={isHost}
+          />
+        </div>
+      )}
 
       {/* Online Presence Roster */}
       {presenceUsers.length > 0 && (

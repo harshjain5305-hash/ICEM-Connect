@@ -77,9 +77,9 @@ Rating / Reputation
 
 # 2. Current Overall State
 
-## State: PHASE 8 COMPLETE — REALTIME FOUNDATION & ACTIVE RIDE SESSIONS OPERATIONAL
+## State: PHASE 9 COMPLETE — LIVE LOCATION STREAMING, GPS THROTTLING & TRACKING MAP OPERATIONAL
 
-The private Supabase Realtime channel architecture (`ride:{rideId}`), active ride session lifecycle (`ride_sessions` table with `ACTIVE` and `ENDED` states), server-side participant authorization boundary (host and confirmed participants allowed; unaffiliated students rejected with 403), presence synchronization (online roster of host and peers), automatic lifecycle broadcasts (`ride:session_started`, `ride:session_ended`, `ride:status_changed`), and the responsive `ActiveRideSessionBanner` UI component have been implemented and verified according to `Phases.md §12`, `Architecture.md §10, §12, §13.3, §14`, and `Rules.md §14`.
+The private Supabase Realtime channel architecture (`ride:{rideId}`), active ride session lifecycle (`ride_sessions` table with `ACTIVE` and `ENDED` states), live GPS geolocation tracking (`navigator.geolocation.watchPosition`), strict participant-only authorization boundary (host publishes; confirmed passengers/host subscribe; 403 for strangers; immediate completion shutoff), 5-second or 15-meter throttling engine, transient data privacy guarantee (zero coordinate persistence in database tables; only `last_location_at` session heartbeat), browser permission denial graceful recovery, and the interactive SVG `LiveRideTrackingMap` component have been implemented and verified according to `Phases.md §13`, `PRD.md §11, §12`, `Architecture.md §13, §14`, and `Rules.md §14, §15, §16, §17`.
 
 Current state:
 
@@ -89,7 +89,7 @@ Current state:
 - Development rules: **documented**
 - Development phases: **documented**
 - Design system/UX: **implemented with official Indira ICEM brand palette**
-- Project memory: **updated with Phase 8 verified evidence**
+- Project memory: **updated with Phase 9 verified evidence**
 - Frontend foundation: **VERIFIED & OPERATIONAL**
 - Backend connection & health service: **VERIFIED & OPERATIONAL**
 - Database baseline migration & RLS: **VERIFIED in supabase/migrations/**
@@ -117,15 +117,18 @@ Current state:
 - Database Phase 6 RPC migration: **VERIFIED in `20261021000006_phase6_join_requests_capacity.sql` & `20261021000007_phase6_fix_rpc_and_policies.sql`**
 - Database Phase 7 RPC migration: **VERIFIED in `20261021000008_phase7_ratings_moderation.sql`**
 - Database Phase 8 RPC migration: **VERIFIED in `20261021000009_phase8_realtime_ride_sessions.sql`**
+- Database Phase 9 RPC migration: **VERIFIED in `20261021000011_phase9_live_location.sql`**
 - Post-trip 1–5 star ratings & atomic reputation scoring: **VERIFIED & TESTED (`RatingModal` + `rating.service.ts`)**
 - Private safety & misconduct incident reporting: **VERIFIED & TESTED (`ReportModal` + `moderation.service.ts`)**
 - Bidirectional user blocking with search & request exclusion: **VERIFIED & TESTED (`BlockUserModal` + `ProfileView`)**
 - Server-authoritative Campus Admin Console: **VERIFIED & TESTED (`AdminPanel.tsx` + `admin.service.ts`)**
 - Realtime channel rooms (`ride:{rideId}`) & server authorization: **VERIFIED & TESTED (`realtime.service.ts`)**
 - Active ride sessions & presence sync: **VERIFIED & TESTED (`rideSession.service.ts` + `ActiveRideSessionBanner.tsx`)**
-- Test suite (Vitest): **171/171 PASSING across 30 test suites**
+- Live location tracking & host GPS throttling (5s / 15m): **VERIFIED & TESTED (`liveLocation.service.ts` + `useGeolocationWatcher.ts`)**
+- Interactive SVG tracking map with live heading & telemetry: **VERIFIED & TESTED (`LiveRideTrackingMap.tsx`)**
+- Zero coordinate database persistence & heartbeat timestamp: **VERIFIED & TESTED (`record_location_heartbeat`)**
+- Test suite (Vitest): **181/181 PASSING across 31 test suites**
 - Production bundle build: **VERIFIED (0 TypeScript errors)**
-- Live-location implementation: **next target (Phase 9)**
 - Deployment: **pending (scheduled for Phase 11)**
 - Pilot usage: **not started (scheduled for Phase 11)**
 
@@ -1196,11 +1199,36 @@ These are documented requirements only. They must not be treated as implemented 
 
 # 29. Final State Statement
 
-**Phase 6 — Join Requests + Capacity + Notifications has been executed and verified in the repository. The join request lifecycle (`PENDING` -> `ACCEPTED` / `REJECTED` / `CANCELLED`), atomic capacity allocation and race-condition overbooking prevention, optional specific-area pickup note (Design.md §73), `JoinRequestModal`, `HostRequestsSection`, `MyRequestsView`, in-app notifications engine (`notificationService`), and `NotificationBell` are fully operational. All 126 tests pass across 24 test suites (+17 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 7: Ratings + Reporting + Blocking + Admin.**
+**Phase 9 — Live Location has been executed and verified in the repository. Host-side browser GPS geolocation watching (`navigator.geolocation.watchPosition`), strict participant-only authorization boundary (host publishes; confirmed passengers/host subscribe; 403 for strangers; immediate completion shutoff), 5-second or 15-meter throttling engine (`shouldBroadcast`), transient data privacy guarantee (zero coordinate persistence in database tables; only `last_location_at` session heartbeat), browser permission denial graceful recovery, and the interactive SVG `LiveRideTrackingMap` component are fully operational. All 181 tests pass across 31 test suites (+10 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 10: MVP Integration + Hardening.**
 
 ---
 
 ## Changelog
+
+### 2026-10-21 — Phase 9 — Live Location Streaming, GPS Throttling & Interactive Map Implemented & Verified
+
+State:
+- Transitioned project state from Phase 8 to **Phase 9 Complete**.
+- Created database migration `supabase/migrations/20261021000011_phase9_live_location.sql`:
+  - Stored procedure `verify_location_publish_access(p_ride_id, p_host_id)`: verifies caller is host of an `ACTIVE` ride with active session.
+  - Stored procedure `verify_location_subscribe_access(p_ride_id, p_user_id)`: verifies caller is host, confirmed participant, or admin during an `ACTIVE` ride session. Rejects unconfirmed/cancelled users and strangers with 403.
+  - Stored procedure `record_location_heartbeat(p_ride_id, p_host_id)`: updates `ride_sessions.last_location_at` without persisting coordinates.
+  - Added execute grants for `anon, authenticated, service_role`.
+- Implemented **Location Tracking & Streaming Domain Layer**:
+  - `src/features/realtime/realtime.types.ts`: added `location:started`, `location:update`, and `location:stopped` events and `LocationUpdatePayload`.
+  - `src/features/location-tracking/location.types.ts`: `LiveLocationUpdate`, `LocationSharingStatus`, `LocationFreshness`, and `calculateLocationFreshness(timestamp)`.
+  - `src/features/location-tracking/location.schema.ts`: Zod schema `liveLocationUpdateSchema` validating coordinate bounds and timestamp.
+  - `src/features/location-tracking/liveLocation.service.ts`: enforces host publication and passenger subscription authorization checks, implements `shouldBroadcast()` throttling guard (5s interval or 15m displacement), transient location in-memory cache, and heartbeat dispatch.
+  - `src/features/location-tracking/useGeolocationWatcher.ts`: browser `watchPosition` lifecycle, permission denial handling (`PERMISSION_DENIED`), accuracy/speed unit conversion, periodic freshness check, and cleanup on stop.
+- Implemented **Interactive Live Tracking Map & UI Integration**:
+  - `src/features/location-tracking/LiveRideTrackingMap.tsx`: SVG canvas with projected route corridor, sequenced waypoints, live host vehicle marker, heading orientation arrow, accuracy radius ring, and live telemetry chips (speed, accuracy, last updated).
+  - `src/features/realtime/ActiveRideSessionBanner.tsx`: integrated `useGeolocationWatcher` for host, `location:update` listener for passengers, permission denial notice, and collapsible `LiveRideTrackingMap`.
+- Created comprehensive unit and integration test suite:
+  - `src/features/location-tracking/liveLocation.service.test.ts`: 9 tests verifying host GPS publishing authorization, non-host rejection, non-active rejection, passenger subscription authorization, stranger 403 rejection, completion termination, 5s/15m throttling engine, signal freshness calculation (`FRESH`, `STALE`, `LOST`), and realtime broadcast delivery.
+- Verified test suite: **181/181 tests passing across 31 test suites**.
+- Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+- Verified production build: **clean bundle generated** (`npm run build`).
+- Set next implementation target to **Phase 10 — MVP Integration + Hardening**.
 
 ### 2026-10-21 — Phase 8 — Realtime Foundation + Active Ride Sessions Implemented & Verified
 
