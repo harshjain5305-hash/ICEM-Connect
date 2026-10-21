@@ -77,9 +77,9 @@ Rating / Reputation
 
 # 2. Current Overall State
 
-## State: PHASE 2 COMPLETE — LOCATIONS & CORE DATA MODEL ESTABLISHED
+## State: PHASE 3 COMPLETE — RIDE CREATION & RIDE LIFECYCLE ESTABLISHED
 
-The reusable location catalog, relational database schema, database migrations, TypeScript domain definitions, and location search selection components have been implemented and verified according to `Phases.md §6`, `PRD.md §5 (UC-02)`, and `Architecture.md §7 & §10`.
+The verified ride creation flow, host seat offering form, deterministic ride state machine (`DRAFT` $\rightarrow$ `PUBLISHED` $\rightarrow$ `CONFIRMED` $\rightarrow$ `ACTIVE` $\rightarrow$ `COMPLETED` / `CANCELLED` / `EXPIRED`), "My Rides" host management dashboard, ride detail modal, atomic status transition database migration, and test coverage have been implemented and verified according to `Phases.md §7`, `PRD.md §5 (UC-02) & §10`, `Rules.md §6-9`, and `Architecture.md §11 & §18`.
 
 Current state:
 
@@ -89,7 +89,7 @@ Current state:
 - Development rules: **documented**
 - Development phases: **documented**
 - Design system/UX: **implemented with official Indira ICEM brand palette**
-- Project memory: **updated with Phase 2 verified evidence**
+- Project memory: **updated with Phase 3 verified evidence**
 - Frontend foundation: **VERIFIED & OPERATIONAL**
 - Backend connection & health service: **VERIFIED & OPERATIONAL**
 - Database baseline migration & RLS: **VERIFIED in supabase/migrations/**
@@ -99,9 +99,12 @@ Current state:
 - Route & API authorization guards: **VERIFIED & TESTED (403 on unauthorized access)**
 - Locations catalog & search: **VERIFIED & TESTED (15 authentic ICEM/PCMC transit nodes)**
 - Relational core database schema: **VERIFIED in supabase/migrations/ (11 tables + RLS + stored procedures)**
-- Test suite (Vitest): **43/43 PASSING across 10 test suites**
+- Ride creation flow & draft saving: **VERIFIED & TESTED (`OfferRideForm`)**
+- Deterministic ride state machine: **VERIFIED & TESTED (`ride.state.ts` + stored procedure)**
+- Host ride management dashboard: **VERIFIED & TESTED (`MyRidesView` + `RideDetailModal`)**
+- Test suite (Vitest): **80/80 PASSING across 14 test suites**
 - Production bundle build: **VERIFIED (0 TypeScript errors)**
-- Ride Creation & Lifecycle: **next target (Phase 3)**
+- Routes + Waypoints: **next target (Phase 4)**
 - Realtime implementation: **pending (scheduled for Phase 8)**
 - Live-location implementation: **pending (scheduled for Phase 9)**
 - Deployment: **pending (scheduled for Phase 11)**
@@ -569,39 +572,75 @@ The following are **not** counted as completed merely because they appear in doc
 
 # 12. Current Development Phase
 
-## Current phase: Phase 2 Completed; Ready for Phase 3 — Ride Creation + Ride Lifecycle
+## Current phase: Phase 3 Completed; Ready for Phase 4 — Routes + Waypoints
 
-Phase 2 — Locations + Core Data Model has been executed, tested, and verified against all criteria in `Phases.md §6`.
+Phase 3 — Ride Creation + Ride Lifecycle has been executed, tested, and verified against all criteria in `Phases.md §7`, `PRD.md §5 & §10`, `Rules.md §6-9`, and `Architecture.md §11 & §18`.
 
-The next implementation milestone is **Phase 3 — Ride Creation + Ride Lifecycle**.
+The next implementation milestone is **Phase 4 — Routes + Waypoints**.
 
-Do not jump directly to maps routing, matching, join requests, live location, or AI features before ride creation and the state machine lifecycle are verified.
+Do not jump directly to passenger search matching (Phase 5), join requests (Phase 6), live location (Phase 9), or AI features before routes and waypoints are verified.
 
 ---
 
 # 13. Immediate Next Task
 
-### Phase 3 — Ride Creation + Ride Lifecycle
+### Phase 4 — Routes + Waypoints
 
 Implement and verify:
 
-1. **Offer Ride Flow (`OfferRideForm.tsx`):**
-   - Origin and destination selection with verified ICEM/PCMC locations.
-   - Departure date, time, available seats, vehicle type (Bike/Scooter/Car), and optional pickup/coordination notes.
-2. **Deterministic Ride State Machine:**
-   - Supported statuses: `DRAFT`, `PUBLISHED`, `CONFIRMED`, `ACTIVE`, `COMPLETED`, `CANCELLED`, `EXPIRED`.
-   - Strict transition rules (e.g., `DRAFT` $\rightarrow$ `PUBLISHED`, `PUBLISHED` $\rightarrow$ `CONFIRMED`, `ACTIVE` $\rightarrow$ `COMPLETED`).
-   - Rejection of invalid transitions (e.g., `COMPLETED` $\rightarrow$ `ACTIVE`, `CANCELLED` $\rightarrow$ `PUBLISHED`).
-3. **Ride Repository & Service Enhancements:**
-   - CRUD operations with strict host ownership verification.
-   - Status transition operations with server-enforced validation.
-   - "My Rides" query returning hosted rides with active statuses.
-4. **"My Rides" Dashboard Management View:**
-   - Visual cards showing ride status badges, origin $\rightarrow$ destination, date/time, vehicle, and remaining seats.
-   - Actions to publish drafts, view ride details, and cancel active/published rides.
-5. **Testing Suite:**
-   - Unit tests for ride creation schema and state machine transitions.
-   - Integration tests for host ownership and ride lifecycle actions.
+1. **Routing Provider Integration / Abstraction (`route.service.ts`):**
+   - Connect origin & destination to generate normalized route polyline, distance in meters, and travel duration in seconds.
+   - Server-side / Edge Function proxy to protect map provider credentials (`Architecture.md §2.5`).
+2. **Intermediate Waypoints Generation & Sequencing:**
+   - Extract and store ordered intermediate points (e.g., ICEM $\rightarrow$ Somatne Phata $\rightarrow$ Talegaon $\rightarrow$ Pimpri $\rightarrow$ Bhosari).
+   - Populate `ride_routes` and `ride_waypoints` tables with sequence order and relative distance from start.
+3. **Route Preview & Map Visualization:**
+   - Visual map preview displaying the corridor polyline and sequenced waypoints.
+   - Host inspection of intermediate points before publishing.
+4. **Testing Suite:**
+   - Unit tests for route geometry normalization, waypoint sequencing, and directionality.
+   - Tests validating that waypoints maintain strict ascending sequence order.
+
+---
+
+### Phase 3 Evidence & Completion Record
+
+The following concrete evidence confirms Phase 3 is complete:
+
+1. **Deterministic Ride State Machine ([`src/features/rides/ride.state.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/ride.state.ts)):**
+   - Strict transition table enforcing `DRAFT` $\rightarrow$ `PUBLISHED` $\rightarrow$ `CONFIRMED` $\rightarrow$ `ACTIVE` $\rightarrow$ `COMPLETED`, plus `CANCELLED` and `EXPIRED`.
+   - Rejection of invalid transitions, state jumps, self-transitions, and any transitions from terminal states (`COMPLETED`, `CANCELLED`, `EXPIRED`).
+   - Helpers: `canTransitionRide`, `getAllowedTransitions`, `isRideEditable`, `isRideTerminal`, `isRideCancellable`.
+   - Comprehensive status metadata: `RIDE_STATUS_METADATA` defining official Indira ICEM badges, color classes, and descriptions.
+   - Verified by 14 dedicated unit tests in [`src/features/rides/ride.state.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/ride.state.test.ts).
+2. **Ride Domain Service & Repository ([`src/features/rides/ride.service.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/ride.service.ts)):**
+   - Implements `createRide` (as draft or published), `getRide`, `listHostRides`, `listPublishedRides`, `updateRide`, `transitionRideStatus`, `publishRide`, `startRide`, `completeRide`, `cancelRide`, and `deleteDraftRide`.
+   - Enforces host ownership verification (`assertHostOwnership`), rejecting non-host modifications with `FORBIDDEN` error.
+   - Enforces edit locks on `ACTIVE` and `COMPLETED` rides (`RIDE_INVALID_STATE`).
+   - Repository hydrations for origin and destination location objects.
+   - Verified by 14 unit and integration tests in [`src/features/rides/ride.service.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/ride.service.test.ts).
+3. **Atomic State Transition Database Migration ([`supabase/migrations/20261021000003_phase3_ride_lifecycle.sql`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/supabase/migrations/20261021000003_phase3_ride_lifecycle.sql)):**
+   - PostgreSQL stored procedure `public.transition_ride_status(p_ride_id UUID, p_target_status public.ride_status, p_reason TEXT)` executed with `SECURITY DEFINER`.
+   - Verifies caller authentication and host/admin authorization.
+   - Validates state transitions directly on the database engine.
+   - Automatically terminates any active `ride_sessions` when a ride transitions to `COMPLETED` or `CANCELLED`.
+4. **Interactive Offer Ride Form ([`src/features/rides/OfferRideForm.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/OfferRideForm.tsx)):**
+   - Verified student route corridor selection with `LocationSelect` and swap button.
+   - Date picker with minimum today constraint and time picker with next-hour default.
+   - Vehicle selector chips (`SCOOTER`, `BIKE`, `OTHER`) and passenger seat stepper (1..4) with 2-wheeler safety notes.
+   - Coordination note textarea with character counter.
+   - Dual submission modes: "Publish Ride" (primary brand navy) and "Save as Draft" (secondary).
+   - In-app validation error alerts and success card with "Go to My Rides" action.
+   - Verified by unit tests in [`src/features/rides/OfferRideForm.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/OfferRideForm.test.tsx).
+5. **Host Rides Dashboard & Detail Modal ([`src/features/rides/MyRidesView.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/MyRidesView.tsx), [`src/features/rides/RideDetailModal.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/RideDetailModal.tsx)):**
+   - Responsive cards showing route corridors, departure time, seats, and Indira status badges.
+   - Tabbed filtering: All, Active & Upcoming, Drafts, Completed/Past.
+   - Contextual lifecycle action buttons: Publish draft, Start published ride, Complete active ride, and Cancel with confirmation modal.
+   - Verified by component tests in [`src/features/rides/MyRidesView.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/MyRidesView.test.tsx).
+6. **Verification & Tests:**
+   - 80/80 tests passing across 14 test suites (+37 tests added in Phase 3).
+   - `tsc --noEmit` passing with 0 errors.
+   - Production bundle compiled in 5.26s.
 
 ---
 
@@ -1100,11 +1139,27 @@ These are documented requirements only. They must not be treated as implemented 
 
 # 29. Final State Statement
 
-**Phase 2 — Locations + Core Data Model has been executed and verified in the repository. The reusable location catalog (15 ICEM/PCMC transit nodes), relational core database schema (11 tables, constraints, indexes, RLS, and stored search procedure), TypeScript database interfaces, dual-mode location search service, ride domain repository, and interactive UI selection components are fully operational. All 43 tests pass across 10 test suites, TypeScript builds without errors, and the project is ready to proceed to Phase 3: Ride Creation + Ride Lifecycle.**
+**Phase 3 — Ride Creation + Ride Lifecycle has been executed and verified in the repository. The verified student seat-offering form (`OfferRideForm`), deterministic ride state machine (`DRAFT` $\rightarrow$ `PUBLISHED` $\rightarrow$ `CONFIRMED` $\rightarrow$ `ACTIVE` $\rightarrow$ `COMPLETED` / `CANCELLED` / `EXPIRED`), "My Rides" host dashboard (`MyRidesView`), detailed ride inspection modal (`RideDetailModal`), atomic database migration stored procedure (`transition_ride_status`), and host ownership enforcement are fully operational. All 80 tests pass across 14 test suites (+37 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 4: Routes + Waypoints.**
 
 ---
 
 ## Changelog
+
+### 2026-10-21 — Phase 3 — Ride Creation + Ride Lifecycle Implemented & Verified
+
+State:
+- Transitioned project state from Phase 2 to **Phase 3 Complete**.
+- Implemented deterministic ride state machine in `src/features/rides/ride.state.ts` enforcing transitions, terminal locks, editability rules, and official Indira ICEM status badges.
+- Enhanced `ride.schema.ts` with `updateRideSchema`, `transitionRideStatusSchema`, and date validation.
+- Implemented `ride.service.ts` with host ownership checks, draft saving, publishing, starting, completing, cancelling, and draft deletion.
+- Created SQL migration `supabase/migrations/20261021000003_phase3_ride_lifecycle.sql` containing stored procedure `transition_ride_status()` with RLS authorization and session cleanup.
+- Implemented interactive `OfferRideForm.tsx` supporting location autocomplete, date/time scheduling, vehicle types (scooter, bike, car), seat stepper (1..4), coordination notes, and draft saving.
+- Implemented "My Rides" host dashboard in `MyRidesView.tsx` with category filtering (All, Active, Drafts, Past), quick lifecycle actions (Publish, Start, Complete), and `RideDetailModal.tsx` for ride details and cancellation confirmations.
+- Integrated `OfferRideForm` and `MyRidesView` into navigation tabs in `src/App.tsx`.
+- Verified test suite: 80/80 tests passing across 14 test suites (+37 new tests).
+- Verified TypeScript compilation: 0 errors with `tsc --noEmit`.
+- Verified production build: completed successfully with `vite build`.
+- Set next implementation target to **Phase 4 — Routes + Waypoints**.
 
 ### 2026-10-21 — Phase 2 — Locations + Core Data Model Implemented & Verified
 

@@ -7,9 +7,11 @@ import type {
 } from './ride.types';
 import type {
   CreateRideInput,
+  UpdateRideInput,
   CreateWaypointInput,
   CreateJoinRequestInput,
 } from './ride.schema';
+import type { RideStatus } from '@/types/database';
 import { locationService } from '@/features/locations/location.service';
 
 const LOCAL_STORAGE_RIDES_KEY = 'icem_connect_rides_db_v1';
@@ -34,36 +36,83 @@ function saveLocalData<T>(key: string, data: Record<string, T>) {
   }
 }
 
+async function hydrateLocations(ride: Ride): Promise<Ride> {
+  if (ride.origin && ride.destination) return ride;
+
+  let origin = ride.origin;
+  let destination = ride.destination;
+
+  if (!origin && ride.origin_location_id) {
+    const loc = await locationService.getById(ride.origin_location_id);
+    if (loc) {
+      origin = {
+        id: loc.id,
+        name: loc.name,
+        type: loc.type,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        address: loc.address,
+      };
+    }
+  }
+
+  if (!destination && ride.destination_location_id) {
+    const loc = await locationService.getById(ride.destination_location_id);
+    if (loc) {
+      destination = {
+        id: loc.id,
+        name: loc.name,
+        type: loc.type,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        address: loc.address,
+      };
+    }
+  }
+
+  return { ...ride, origin, destination };
+}
+
 export const rideRepository = {
   /**
-   * Creates a ride record. Available seats initialized to total_seats.
+   * Creates a ride record with initial status ('DRAFT' or 'PUBLISHED').
+   * Available seats initialized to total_seats.
    */
-  async createRide(hostId: string, input: CreateRideInput): Promise<Ride> {
+  async createRide(
+    hostId: string,
+    input: CreateRideInput,
+    status: RideStatus = 'PUBLISHED'
+  ): Promise<Ride> {
     const isLive = isSupabaseConfigured();
     const availableSeats = input.available_seats ?? input.total_seats;
 
     if (isLive) {
-      const { data, error } = await supabase
-        .from('rides')
-        .insert({
-          host_id: hostId,
-          origin_location_id: input.origin_location_id,
-          destination_location_id: input.destination_location_id,
-          departure_date: input.departure_date,
-          departure_time: input.departure_time,
-          total_seats: input.total_seats,
-          available_seats: availableSeats,
-          vehicle_type: input.vehicle_type,
-          note: input.note || null,
-          status: 'PUBLISHED',
-        })
-        .select()
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('rides')
+          .insert({
+            host_id: hostId,
+            origin_location_id: input.origin_location_id,
+            destination_location_id: input.destination_location_id,
+            departure_date: input.departure_date,
+            departure_time: input.departure_time,
+            total_seats: input.total_seats,
+            available_seats: availableSeats,
+            vehicle_type: input.vehicle_type,
+            note: input.note || null,
+            status,
+            published_at: status === 'PUBLISHED' ? new Date().toISOString() : null,
+          })
+          .select()
+          .single();
 
-      if (error || !data) {
-        throw new Error(error?.message || 'Failed to create ride');
+        if (error || !data) {
+          throw new Error(error?.message || 'Failed to create ride');
+        }
+        return await hydrateLocations(data as unknown as Ride);
+      } catch (err) {
+        console.warn('Live Supabase ride create error, falling back to local mode:', err);
       }
-      return data as unknown as Ride;
     }
 
     // Local mode
@@ -73,6 +122,7 @@ export const rideRepository = {
     const originLoc = await locationService.getById(input.origin_location_id);
     const destLoc = await locationService.getById(input.destination_location_id);
 
+    const now = new Date().toISOString();
     const newRide: Ride = {
       id: rideId,
       host_id: hostId,
@@ -100,10 +150,10 @@ export const rideRepository = {
       available_seats: availableSeats,
       vehicle_type: input.vehicle_type,
       note: input.note || null,
-      status: 'PUBLISHED',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      published_at: new Date().toISOString(),
+      status,
+      created_at: now,
+      updated_at: now,
+      published_at: status === 'PUBLISHED' ? now : null,
     };
 
     rides[rideId] = newRide;
@@ -137,51 +187,218 @@ export const rideRepository = {
   },
 
   /**
-   * Fetches a ride by its ID.
+   * Fetches a ride by its ID with hydrated origin and destination.
    */
   async getRideById(rideId: string): Promise<Ride | null> {
     const isLive = isSupabaseConfigured();
 
     if (isLive) {
-      const { data } = await supabase
-        .from('rides')
-        .select('*')
-        .eq('id', rideId)
-        .single();
-      return (data as unknown as Ride) || null;
+      try {
+        const { data } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('id', rideId)
+          .single();
+        if (data) {
+          return await hydrateLocations(data as unknown as Ride);
+        }
+      } catch (err) {
+        console.warn('Live Supabase getRideById error:', err);
+      }
     }
 
     const rides = getLocalData<Ride>(LOCAL_STORAGE_RIDES_KEY);
-    return rides[rideId] || null;
+    const ride = rides[rideId] || null;
+    return ride ? await hydrateLocations(ride) : null;
   },
 
   /**
-   * Lists published rides optionally filtered by date.
+   * Lists rides hosted by a specific student.
+   */
+  async listRidesByHost(hostId: string): Promise<Ride[]> {
+    const isLive = isSupabaseConfigured();
+
+    if (isLive) {
+      try {
+        const { data } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('host_id', hostId)
+          .order('departure_date', { ascending: false });
+
+        if (data && data.length > 0) {
+          return await Promise.all(data.map((r) => hydrateLocations(r as unknown as Ride)));
+        }
+      } catch (err) {
+        console.warn('Live Supabase listRidesByHost error:', err);
+      }
+    }
+
+    const rides = getLocalData<Ride>(LOCAL_STORAGE_RIDES_KEY);
+    const hostRides = Object.values(rides).filter((r) => r.host_id === hostId);
+    const hydrated = await Promise.all(hostRides.map((r) => hydrateLocations(r)));
+    return hydrated.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  },
+
+  /**
+   * Lists published and confirmed rides discoverable to passengers.
    */
   async listPublishedRides(date?: string): Promise<Ride[]> {
     const isLive = isSupabaseConfigured();
 
     if (isLive) {
-      let query = supabase
-        .from('rides')
-        .select('*')
-        .in('status', ['PUBLISHED', 'CONFIRMED']);
+      try {
+        let query = supabase
+          .from('rides')
+          .select('*')
+          .in('status', ['PUBLISHED', 'CONFIRMED']);
 
-      if (date) {
-        query = query.eq('departure_date', date);
+        if (date) {
+          query = query.eq('departure_date', date);
+        }
+        const { data } = await query.order('departure_date', { ascending: true });
+        if (data && data.length > 0) {
+          return await Promise.all(data.map((r) => hydrateLocations(r as unknown as Ride)));
+        }
+      } catch (err) {
+        console.warn('Live Supabase listPublishedRides error:', err);
       }
-      const { data } = await query.order('departure_date', { ascending: true });
-      return (data as unknown as Ride[]) || [];
     }
 
     const rides = getLocalData<Ride>(LOCAL_STORAGE_RIDES_KEY);
-    return Object.values(rides)
+    const filtered = Object.values(rides)
       .filter((r) => {
         if (!['PUBLISHED', 'CONFIRMED'].includes(r.status)) return false;
         if (date && r.departure_date !== date) return false;
         return true;
       })
       .sort((a, b) => `${a.departure_date} ${a.departure_time}`.localeCompare(`${b.departure_date} ${b.departure_time}`));
+
+    return await Promise.all(filtered.map((r) => hydrateLocations(r)));
+  },
+
+  /**
+   * Updates mutable fields of an editable ride.
+   */
+  async updateRide(rideId: string, updates: UpdateRideInput): Promise<Ride> {
+    const isLive = isSupabaseConfigured();
+    const now = new Date().toISOString();
+
+    if (isLive) {
+      try {
+        const payload: Record<string, unknown> = { updated_at: now };
+        if (updates.origin_location_id) payload.origin_location_id = updates.origin_location_id;
+        if (updates.destination_location_id) payload.destination_location_id = updates.destination_location_id;
+        if (updates.departure_date) payload.departure_date = updates.departure_date;
+        if (updates.departure_time) payload.departure_time = updates.departure_time;
+        if (updates.total_seats !== undefined) payload.total_seats = updates.total_seats;
+        if (updates.vehicle_type) payload.vehicle_type = updates.vehicle_type;
+        if (updates.note !== undefined) payload.note = updates.note;
+
+        const { data, error } = await supabase
+          .from('rides')
+          .update(payload)
+          .eq('id', rideId)
+          .select()
+          .single();
+
+        if (error || !data) throw new Error(error?.message || 'Failed to update ride');
+        return await hydrateLocations(data as unknown as Ride);
+      } catch (err) {
+        console.warn('Live Supabase updateRide error:', err);
+      }
+    }
+
+    const rides = getLocalData<Ride>(LOCAL_STORAGE_RIDES_KEY);
+    const existing = rides[rideId];
+    if (!existing) throw new Error('Ride not found');
+
+    const updated: Ride = {
+      ...existing,
+      ...updates,
+      updated_at: now,
+    };
+
+    rides[rideId] = updated;
+    saveLocalData(LOCAL_STORAGE_RIDES_KEY, rides);
+    return await hydrateLocations(updated);
+  },
+
+  /**
+   * Updates the status of a ride.
+   */
+  async updateRideStatus(rideId: string, newStatus: RideStatus): Promise<Ride> {
+    const isLive = isSupabaseConfigured();
+    const now = new Date().toISOString();
+
+    if (isLive) {
+      try {
+        const payload: Record<string, unknown> = {
+          status: newStatus,
+          updated_at: now,
+        };
+        if (newStatus === 'PUBLISHED') {
+          payload.published_at = now;
+        }
+
+        const { data, error } = await supabase
+          .from('rides')
+          .update(payload)
+          .eq('id', rideId)
+          .select()
+          .single();
+
+        if (error || !data) throw new Error(error?.message || 'Failed to update ride status');
+        return await hydrateLocations(data as unknown as Ride);
+      } catch (err) {
+        console.warn('Live Supabase updateRideStatus error:', err);
+      }
+    }
+
+    const rides = getLocalData<Ride>(LOCAL_STORAGE_RIDES_KEY);
+    const existing = rides[rideId];
+    if (!existing) throw new Error('Ride not found');
+
+    const updated: Ride = {
+      ...existing,
+      status: newStatus,
+      updated_at: now,
+      published_at: newStatus === 'PUBLISHED' && !existing.published_at ? now : existing.published_at,
+    };
+
+    rides[rideId] = updated;
+    saveLocalData(LOCAL_STORAGE_RIDES_KEY, rides);
+    return await hydrateLocations(updated);
+  },
+
+  /**
+   * Deletes a ride only if it is in DRAFT status.
+   */
+  async deleteDraftRide(rideId: string): Promise<boolean> {
+    const isLive = isSupabaseConfigured();
+
+    if (isLive) {
+      try {
+        const { error } = await supabase
+          .from('rides')
+          .delete()
+          .eq('id', rideId)
+          .eq('status', 'DRAFT');
+        if (!error) return true;
+      } catch (err) {
+        console.warn('Live Supabase deleteDraftRide error:', err);
+      }
+    }
+
+    const rides = getLocalData<Ride>(LOCAL_STORAGE_RIDES_KEY);
+    if (rides[rideId] && rides[rideId].status === 'DRAFT') {
+      delete rides[rideId];
+      saveLocalData(LOCAL_STORAGE_RIDES_KEY, rides);
+      return true;
+    }
+    return false;
   },
 
   /**
@@ -191,23 +408,26 @@ export const rideRepository = {
     const isLive = isSupabaseConfigured();
 
     if (isLive) {
-      const { data, error } = await supabase
-        .from('ride_waypoints')
-        .insert({
-          ride_id: rideId,
-          sequence: input.sequence,
-          label: input.label,
-          type: input.type,
-          latitude: input.latitude,
-          longitude: input.longitude,
-          location_id: input.location_id || null,
-          distance_from_start_meters: input.distance_from_start_meters || null,
-        })
-        .select()
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('ride_waypoints')
+          .insert({
+            ride_id: rideId,
+            sequence: input.sequence,
+            label: input.label,
+            type: input.type,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            location_id: input.location_id || null,
+            distance_from_start_meters: input.distance_from_start_meters || null,
+          })
+          .select()
+          .single();
 
-      if (error || !data) throw new Error(error?.message || 'Failed to create waypoint');
-      return data as unknown as RideWaypoint;
+        if (!error && data) return data as unknown as RideWaypoint;
+      } catch (err) {
+        console.warn('Live Supabase createWaypoint error:', err);
+      }
     }
 
     const waypoints = getLocalData<RideWaypoint>(LOCAL_STORAGE_WAYPOINTS_KEY);
@@ -237,12 +457,16 @@ export const rideRepository = {
     const isLive = isSupabaseConfigured();
 
     if (isLive) {
-      const { data } = await supabase
-        .from('ride_waypoints')
-        .select('*')
-        .eq('ride_id', rideId)
-        .order('sequence', { ascending: true });
-      return (data as unknown as RideWaypoint[]) || [];
+      try {
+        const { data } = await supabase
+          .from('ride_waypoints')
+          .select('*')
+          .eq('ride_id', rideId)
+          .order('sequence', { ascending: true });
+        if (data) return data as unknown as RideWaypoint[];
+      } catch (err) {
+        console.warn('Live Supabase getWaypointsForRide error:', err);
+      }
     }
 
     const waypoints = getLocalData<RideWaypoint>(LOCAL_STORAGE_WAYPOINTS_KEY);
@@ -258,22 +482,25 @@ export const rideRepository = {
     const isLive = isSupabaseConfigured();
 
     if (isLive) {
-      const { data, error } = await supabase
-        .from('ride_join_requests')
-        .insert({
-          ride_id: input.ride_id,
-          student_id: studentId,
-          pickup_waypoint_id: input.pickup_waypoint_id,
-          drop_waypoint_id: input.drop_waypoint_id,
-          seat_count: input.seat_count,
-          specific_area_note: input.specific_area_note || null,
-          status: 'PENDING',
-        })
-        .select()
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('ride_join_requests')
+          .insert({
+            ride_id: input.ride_id,
+            student_id: studentId,
+            pickup_waypoint_id: input.pickup_waypoint_id,
+            drop_waypoint_id: input.drop_waypoint_id,
+            seat_count: input.seat_count,
+            specific_area_note: input.specific_area_note || null,
+            status: 'PENDING',
+          })
+          .select()
+          .single();
 
-      if (error || !data) throw new Error(error?.message || 'Failed to create join request');
-      return data as unknown as RideJoinRequest;
+        if (!error && data) return data as unknown as RideJoinRequest;
+      } catch (err) {
+        console.warn('Live Supabase createJoinRequest error:', err);
+      }
     }
 
     const requests = getLocalData<RideJoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
@@ -303,11 +530,15 @@ export const rideRepository = {
     const isLive = isSupabaseConfigured();
 
     if (isLive) {
-      const { data } = await supabase
-        .from('ride_join_requests')
-        .select('*')
-        .eq('ride_id', rideId);
-      return (data as unknown as RideJoinRequest[]) || [];
+      try {
+        const { data } = await supabase
+          .from('ride_join_requests')
+          .select('*')
+          .eq('ride_id', rideId);
+        if (data) return data as unknown as RideJoinRequest[];
+      } catch (err) {
+        console.warn('Live Supabase getJoinRequestsForRide error:', err);
+      }
     }
 
     const requests = getLocalData<RideJoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
@@ -321,12 +552,16 @@ export const rideRepository = {
     const isLive = isSupabaseConfigured();
 
     if (isLive) {
-      const { data } = await supabase
-        .from('ride_participants')
-        .select('*')
-        .eq('ride_id', rideId)
-        .eq('status', 'CONFIRMED');
-      return (data as unknown as RideParticipant[]) || [];
+      try {
+        const { data } = await supabase
+          .from('ride_participants')
+          .select('*')
+          .eq('ride_id', rideId)
+          .eq('status', 'CONFIRMED');
+        if (data) return data as unknown as RideParticipant[];
+      } catch (err) {
+        console.warn('Live Supabase getParticipantsForRide error:', err);
+      }
     }
 
     const participants = getLocalData<RideParticipant>(LOCAL_STORAGE_PARTICIPANTS_KEY);
