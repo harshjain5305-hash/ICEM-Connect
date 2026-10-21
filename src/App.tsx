@@ -79,7 +79,10 @@ const AppContent: React.FC = () => {
               </div>
             }
           >
-            <MyRidesView onOfferNewClick={() => setCurrentTab('offer')} />
+            <MyRidesView
+              onOfferNewClick={() => setCurrentTab('offer')}
+              onFindRidesClick={() => setCurrentTab('find')}
+            />
           </ProtectedRoute>
         );
 

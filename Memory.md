@@ -77,9 +77,9 @@ Rating / Reputation
 
 # 2. Current Overall State
 
-## State: PHASE 5 COMPLETE — FIND RIDE & DETERMINISTIC MATCHING ENGINE OPERATIONAL
+## State: PHASE 6 COMPLETE — JOIN REQUESTS, TRANSACTIONAL CAPACITY & NOTIFICATIONS OPERATIONAL
 
-The deterministic corridor route-segment matching engine, search interface (`FindRideView`), 100-point compatibility scoring algorithm (Architecture.md §9.6), directionality invariant validator ($seq_{pickup} < seq_{drop}$), spatial proximity tolerance with Haversine distance, and PostgreSQL search procedure migration (`search_compatible_rides`) have been implemented and verified according to `Phases.md §9`, `PRD.md §5 (UC-03) & §22`, `Rules.md §5-6`, and `Architecture.md §9`.
+The join request lifecycle (`PENDING` -> `ACCEPTED` / `REJECTED` / `CANCELLED`), atomic capacity allocation and overbooking prevention, optional specific-area pickup note (Design.md §73), `JoinRequestModal`, `HostRequestsSection`, `MyRequestsView`, in-app notifications service, and `NotificationBell` have been implemented and verified according to `Phases.md §10`, `PRD.md §5 (UC-04, UC-05) & §9`, `Rules.md §10-12`, and `Architecture.md §8, §10, §47.2`.
 
 Current state:
 
@@ -89,7 +89,7 @@ Current state:
 - Development rules: **documented**
 - Development phases: **documented**
 - Design system/UX: **implemented with official Indira ICEM brand palette**
-- Project memory: **updated with Phase 5 verified evidence**
+- Project memory: **updated with Phase 6 verified evidence**
 - Frontend foundation: **VERIFIED & OPERATIONAL**
 - Backend connection & health service: **VERIFIED & OPERATIONAL**
 - Database baseline migration & RLS: **VERIFIED in supabase/migrations/**
@@ -108,10 +108,15 @@ Current state:
 - Find Ride search interface & filter controls: **VERIFIED & TESTED (`FindRideView`)**
 - Deterministic 100-point matching engine: **VERIFIED & TESTED (`matching.service.ts`)**
 - Strict directionality enforcement ($seq_{pickup} < seq_{drop}$): **VERIFIED & TESTED (0 reverse candidates)**
-- Database search RPC migration: **VERIFIED in `20261021000005_phase5_find_matching.sql`**
-- Test suite (Vitest): **109/109 PASSING across 20 test suites**
+- Join request creation & optional pickup note: **VERIFIED & TESTED (`JoinRequestModal` + `request.service.ts`)**
+- Atomic capacity allocation & race-condition guard: **VERIFIED & TESTED (concurrency test passes)**
+- Host request management & participant creation: **VERIFIED & TESTED (`HostRequestsSection`)**
+- Passenger request tracking & cancellation: **VERIFIED & TESTED (`MyRequestsView`)**
+- In-app notification engine & bell popover: **VERIFIED & TESTED (`notificationService` + `NotificationBell`)**
+- Database Phase 6 RPC migration: **VERIFIED in `20261021000006_phase6_join_requests_capacity.sql`**
+- Test suite (Vitest): **126/126 PASSING across 24 test suites**
 - Production bundle build: **VERIFIED (0 TypeScript errors)**
-- Join Requests & Capacity Management: **next target (Phase 6)**
+- Ratings, Reports & Admin Moderation: **next target (Phase 7)**
 - Realtime implementation: **pending (scheduled for Phase 8)**
 - Live-location implementation: **pending (scheduled for Phase 9)**
 - Deployment: **pending (scheduled for Phase 11)**
@@ -1184,11 +1189,35 @@ These are documented requirements only. They must not be treated as implemented 
 
 # 29. Final State Statement
 
-**Phase 5 — Find Ride + Deterministic Matching has been executed and verified in the repository. The deterministic corridor matching engine (`matching.service.ts`), 100-point compatibility scoring algorithm (Architecture.md §9.6), directionality invariant validator ($seq_{pickup} < seq_{drop}$), spatial proximity tolerance with Haversine distance, PostgreSQL search procedure migration (`search_compatible_rides`), and responsive search interface (`FindRideView`) are fully operational. All 109 tests pass across 20 test suites (+13 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 6: Join Requests + Capacity + Notifications.**
+**Phase 6 — Join Requests + Capacity + Notifications has been executed and verified in the repository. The join request lifecycle (`PENDING` -> `ACCEPTED` / `REJECTED` / `CANCELLED`), atomic capacity allocation and race-condition overbooking prevention, optional specific-area pickup note (Design.md §73), `JoinRequestModal`, `HostRequestsSection`, `MyRequestsView`, in-app notifications engine (`notificationService`), and `NotificationBell` are fully operational. All 126 tests pass across 24 test suites (+17 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 7: Ratings + Reporting + Blocking + Admin.**
 
 ---
 
 ## Changelog
+
+### 2026-10-21 — Phase 6 — Join Requests + Capacity + Notifications Implemented & Verified
+
+State:
+- Transitioned project state from Phase 5 to **Phase 6 Complete**.
+- Implemented Zod schemas for join request creation, accept, reject, and cancel in `src/features/requests/request.schema.ts`.
+- Implemented core domain models and types in `src/features/requests/request.types.ts` and `src/features/notifications/notification.types.ts`.
+- Created SQL migration `supabase/migrations/20261021000006_phase6_join_requests_capacity.sql`:
+  - `create_ride_join_request()`: validates verified student status, blocks host from requesting own ride, enforces capacity and duplicate request guards, generates host notification.
+  - `accept_join_request()`: locks the ride row (`FOR UPDATE`), verifies available capacity, decrements seats transactionally, transitions to `CONFIRMED` when full, updates request, creates participant, and generates passenger notification.
+  - `reject_join_request()`: updates request to `REJECTED`, leaves capacity untouched, generates passenger notification.
+  - `cancel_join_request()`: handles passenger cancellation; restores seat capacity if previously accepted.
+- Implemented `request.repository.ts` and `request.service.ts` supporting dual-mode Supabase RPC and local storage for test isolation.
+- Implemented `notification.repository.ts` and `notification.service.ts` for in-app alert delivery, unread count tracking, and bulk mark-as-read.
+- Built interactive `JoinRequestModal.tsx` allowing passengers to request 1..4 seats, review pickup and drop points, and enter optional specific-area pickup notes (e.g. "Near the HP petrol pump; I can walk 100 m", Design.md §73).
+- Built interactive `HostRequestsSection.tsx` integrated into `RideDetailModal.tsx` showing pending requests, requester profile & rating, requested seats, pickup notes, and `[Accept]` / `[Reject]` actions, plus confirmed participants.
+- Built `MyRequestsView.tsx` enabling passengers to track all their booked seats and requests, view statuses (`Seat Confirmed`, `Pending Host Approval`, `Declined`, `Cancelled`), and cancel requests.
+- Integrated `MyRequestsView` into `MyRidesView.tsx` with top navigation switch pills (`My Hosted Rides` vs `My Booked Seats & Requests`).
+- Built `NotificationBell.tsx` in `AppHeader.tsx` displaying real-time unread badge counter, alert popover, and mark-all-read.
+- Connected "Request Seat" CTA directly to `FindRideView.tsx` candidate match cards.
+- Verified test suite: 126/126 tests passing across 24 test suites (+17 new tests in `request.service.test.ts`, `notification.service.test.ts`, `JoinRequestModal.test.tsx`, and `HostRequestsSection.test.tsx`).
+- Verified TypeScript compilation: 0 errors with `tsc --noEmit`.
+- Verified production build: completed successfully with `vite build`.
+- Set next implementation target to **Phase 7 — Ratings + Reporting + Blocking + Admin**.
 
 ### 2026-10-21 — Phase 5 — Find Ride + Deterministic Matching Implemented & Verified
 

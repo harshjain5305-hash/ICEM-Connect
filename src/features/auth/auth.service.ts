@@ -349,6 +349,29 @@ export const authService = {
   },
 
   /**
+   * Retrieves student profile by student ID.
+   */
+  async getProfile(studentId: string): Promise<StudentProfile | null> {
+    const isLive = isSupabaseConfigured();
+    if (isLive) {
+      const { data } = await supabase
+        .from('students')
+        .select('*')
+        .eq('id', studentId)
+        .single();
+      return (data as StudentProfile) || null;
+    }
+
+    const users = getStoredUsers();
+    for (const email of Object.keys(users)) {
+      if (users[email].user.id === studentId) {
+        return users[email].profile;
+      }
+    }
+    return null;
+  },
+
+  /**
    * Signs out the user and clears all active credentials.
    */
   async logout(): Promise<void> {

@@ -62,6 +62,8 @@ export const updateRideSchema = z
       .min(1, 'Must offer at least 1 seat')
       .max(4, 'Maximum 4 passenger seats permitted on campus network')
       .optional(),
+    available_seats: z.number().int().min(0).max(4).optional(),
+    status: rideStatusSchema.optional(),
     vehicle_type: vehicleTypeSchema.optional(),
     note: z.string().max(300, 'Note cannot exceed 300 characters').optional().nullable(),
   })

@@ -113,7 +113,8 @@ describe('FindRideView Component (Phase 5)', () => {
     await waitFor(() => {
       expect(screen.getByText(/Compatible Rides Found/i)).toBeInTheDocument();
       expect(screen.getByText(/% Match/i)).toBeInTheDocument();
-      expect(screen.getByText('View Ride & Route')).toBeInTheDocument();
+      expect(screen.getByText('View Route')).toBeInTheDocument();
+      expect(screen.getByText('Request Seat')).toBeInTheDocument();
     });
   });
 

@@ -4,6 +4,7 @@ import { rideService } from './ride.service';
 import type { Ride } from './ride.types';
 import { RIDE_STATUS_METADATA } from './ride.state';
 import { RideDetailModal } from './RideDetailModal';
+import { MyRequestsView } from '@/features/requests/MyRequestsView';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -25,10 +26,12 @@ export type RideFilterCategory = 'all' | 'active' | 'drafts' | 'past';
 
 export interface MyRidesViewProps {
   onOfferNewClick?: () => void;
+  onFindRidesClick?: () => void;
 }
 
-export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick }) => {
+export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFindRidesClick }) => {
   const { user, profile } = useAuth();
+  const [mainTab, setMainTab] = useState<'hosted' | 'requests'>('hosted');
   const [rides, setRides] = useState<Ride[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeFilter, setActiveFilter] = useState<RideFilterCategory>('all');
@@ -110,8 +113,38 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick }) => 
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 space-y-5">
-      {/* HEADER & SUMMARY */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* TOP LEVEL NAVIGATION PILLS: HOSTED VS REQUESTS (Phase 6) */}
+      <div className="flex rounded-xl bg-muted p-1 border border-border">
+        <button
+          type="button"
+          onClick={() => setMainTab('hosted')}
+          className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+            mainTab === 'hosted'
+              ? 'bg-card text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          My Hosted Rides ({rides.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainTab('requests')}
+          className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+            mainTab === 'requests'
+              ? 'bg-card text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          My Booked Seats &amp; Requests
+        </button>
+      </div>
+
+      {mainTab === 'requests' ? (
+        <MyRequestsView onFindRidesClick={onFindRidesClick} />
+      ) : (
+        <>
+          {/* HEADER & SUMMARY */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
             <Car className="h-5 w-5 text-primary" />
@@ -325,6 +358,8 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick }) => 
             );
           })}
         </div>
+      )}
+      </>
       )}
 
       {/* RIDE DETAIL MODAL */}

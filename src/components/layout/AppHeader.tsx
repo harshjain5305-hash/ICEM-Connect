@@ -1,6 +1,7 @@
 import React from 'react';
 import { Compass, ShieldCheck } from 'lucide-react';
 import { BackendStatusBadge } from '@/features/health/BackendStatusBadge';
+import { NotificationBell } from '@/features/notifications/NotificationBell';
 
 export const AppHeader: React.FC = () => {
   const [logoError, setLogoError] = React.useState(false);
@@ -34,7 +35,8 @@ export const AppHeader: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <NotificationBell />
           <BackendStatusBadge />
         </div>
       </div>

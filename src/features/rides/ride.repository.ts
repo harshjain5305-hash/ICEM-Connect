@@ -305,6 +305,8 @@ export const rideRepository = {
         if (updates.departure_date) payload.departure_date = updates.departure_date;
         if (updates.departure_time) payload.departure_time = updates.departure_time;
         if (updates.total_seats !== undefined) payload.total_seats = updates.total_seats;
+        if (updates.available_seats !== undefined) payload.available_seats = updates.available_seats;
+        if (updates.status) payload.status = updates.status;
         if (updates.vehicle_type) payload.vehicle_type = updates.vehicle_type;
         if (updates.note !== undefined) payload.note = updates.note;
 

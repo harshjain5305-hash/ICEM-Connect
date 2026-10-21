@@ -5,6 +5,7 @@ import type { Location } from '@/features/locations/location.schema';
 import { matchingService } from './matching.service';
 import type { RideSearchResult, MatchedRideCandidate } from './matching.types';
 import { RideDetailModal } from '@/features/rides/RideDetailModal';
+import { JoinRequestModal } from '@/features/requests/JoinRequestModal';
 import type { Ride } from '@/features/rides/ride.types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -54,6 +55,7 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick }) => {
 
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [requestCandidate, setRequestCandidate] = useState<MatchedRideCandidate | null>(null);
 
   const handleSwapLocations = () => {
     const temp = pickup;
@@ -311,6 +313,9 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick }) => {
                     setSelectedRide(candidate.ride);
                     setIsModalOpen(true);
                   }}
+                  onRequestSeat={() => {
+                    setRequestCandidate(candidate);
+                  }}
                 />
               ))}
             </div>
@@ -327,6 +332,23 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick }) => {
             setIsModalOpen(false);
             setSelectedRide(null);
           }}
+          onRideUpdated={() => {
+            handleSearch();
+          }}
+        />
+      )}
+
+      {/* JOIN REQUEST MODAL (Phase 6) */}
+      {requestCandidate && (
+        <JoinRequestModal
+          ride={requestCandidate.ride}
+          pickupWaypoint={requestCandidate.pickupWaypoint}
+          dropWaypoint={requestCandidate.dropWaypoint}
+          isOpen={Boolean(requestCandidate)}
+          onClose={() => setRequestCandidate(null)}
+          onRequestSubmitted={() => {
+            handleSearch();
+          }}
         />
       )}
     </div>
@@ -336,11 +358,13 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick }) => {
 interface CandidateMatchCardProps {
   candidate: MatchedRideCandidate;
   onInspect: () => void;
+  onRequestSeat: () => void;
 }
 
 const CandidateMatchCard: React.FC<CandidateMatchCardProps> = ({
   candidate,
   onInspect,
+  onRequestSeat,
 }) => {
   const { ride, pickupWaypoint, dropWaypoint, matchScore, scoreBreakdown } = candidate;
 
@@ -402,16 +426,29 @@ const CandidateMatchCard: React.FC<CandidateMatchCardProps> = ({
           </span>
         </div>
 
-        <Button
-          size="sm"
-          className="h-8 text-xs gap-1.5 bg-[#003C84] hover:bg-[#1D59A3] text-white"
-          onClick={(e) => {
-            e.stopPropagation();
-            onInspect();
-          }}
-        >
-          <Eye className="h-3.5 w-3.5" /> View Ride &amp; Route
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1.5"
+            onClick={(e) => {
+              e.stopPropagation();
+              onInspect();
+            }}
+          >
+            <Eye className="h-3.5 w-3.5" /> View Route
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 text-xs gap-1.5 bg-[#003C84] hover:bg-[#1D59A3] text-white"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRequestSeat();
+            }}
+          >
+            <Users className="h-3.5 w-3.5" /> Request Seat
+          </Button>
+        </div>
       </div>
     </div>
   );

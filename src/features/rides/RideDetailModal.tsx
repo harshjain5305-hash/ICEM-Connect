@@ -6,6 +6,8 @@ import { rideService } from './ride.service';
 import { RIDE_STATUS_METADATA, isRideCancellable } from './ride.state';
 import { RouteMapPreview } from '@/features/routes/RouteMapPreview';
 import { WaypointSequenceList } from '@/features/routes/WaypointSequenceList';
+import { HostRequestsSection } from '@/features/requests/HostRequestsSection';
+import { JoinRequestModal } from '@/features/requests/JoinRequestModal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import {
@@ -42,6 +44,7 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
   const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState<boolean>(false);
+  const [showJoinModal, setShowJoinModal] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -377,9 +380,61 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* HOST SEAT REQUESTS & PARTICIPANTS (Phase 6) */}
+              <HostRequestsSection
+                ride={currentRide}
+                onRideCapacityChanged={async () => {
+                  try {
+                    const refreshed = await rideService.getRide(currentRide.id);
+                    setCurrentRide(refreshed);
+                    if (onRideUpdated) onRideUpdated(refreshed);
+                  } catch (e) {
+                    console.error('Refresh ride error:', e);
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          {/* PASSENGER REQUEST SEAT ACTION (Phase 6) */}
+          {!isHost && ['PUBLISHED', 'CONFIRMED'].includes(currentRide.status) && (
+            <div className="rounded-xl border border-primary/20 bg-[#003C84]/5 p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-foreground">Need transport on this route?</h4>
+                  <p className="text-[11px] text-muted-foreground">
+                    {currentRide.available_seats} seat{currentRide.available_seats === 1 ? '' : 's'} available
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={currentRide.available_seats < 1}
+                  onClick={() => setShowJoinModal(true)}
+                  className="bg-[#003C84] hover:bg-[#1D59A3] text-white text-xs gap-1.5 font-semibold"
+                >
+                  <Users className="h-3.5 w-3.5" /> Request Seat
+                </Button>
+              </div>
             </div>
           )}
         </div>
+
+        {/* JOIN REQUEST MODAL */}
+        <JoinRequestModal
+          ride={currentRide}
+          isOpen={showJoinModal}
+          onClose={() => setShowJoinModal(false)}
+          onRequestSubmitted={async () => {
+            try {
+              const refreshed = await rideService.getRide(currentRide.id);
+              setCurrentRide(refreshed);
+              if (onRideUpdated) onRideUpdated(refreshed);
+            } catch (e) {
+              console.error('Refresh ride error:', e);
+            }
+          }}
+        />
 
         {/* FOOTER */}
         <div className="flex justify-end border-t border-border px-6 py-3 bg-muted/20">
