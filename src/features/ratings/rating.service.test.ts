@@ -149,4 +149,28 @@ describe('Rating & Reputation Service (Phase 7)', () => {
     const passengerNotifs = await notificationService.getUserNotifications(passengerId);
     expect(passengerNotifs.some((n) => n.type === 'RATING_RECEIVED')).toBe(true);
   });
+
+  it('allows reciprocal rating when participant status transitioned to COMPLETED after active ride session', async () => {
+    // Start session and complete it (Phase 8 active session transition)
+    await rideService.startRide(hostId, testRideId);
+    await rideService.completeRide(hostId, testRideId);
+
+    // Passenger rates host
+    const passengerRating = await ratingService.submitRating(passengerId, {
+      ride_id: testRideId,
+      reviewee_id: hostId,
+      score: 5,
+      feedback: 'Smooth ride after active session',
+    });
+    expect(passengerRating.success).toBe(true);
+
+    // Host rates passenger
+    const hostRating = await ratingService.submitRating(hostId, {
+      ride_id: testRideId,
+      reviewee_id: passengerId,
+      score: 5,
+      feedback: 'Punctual passenger',
+    });
+    expect(hostRating.success).toBe(true);
+  });
 });

@@ -36,8 +36,31 @@ export const ratingService = {
     const isRevieweeHost = ride.host_id === input.reviewee_id;
 
     const participants = await requestRepository.listParticipantsByRide(input.ride_id);
-    const isReviewerParticipant = participants.some((p) => p.student_id === reviewerId);
-    const isRevieweeParticipant = participants.some((p) => p.student_id === input.reviewee_id);
+    let isReviewerParticipant = participants.some((p) => p.student_id === reviewerId);
+    let isRevieweeParticipant = participants.some((p) => p.student_id === input.reviewee_id);
+
+    // Direct join request fallback check
+    if (!isReviewerParticipant && !isReviewerHost) {
+      try {
+        const studentReqs = await requestRepository.listRequestsByStudent(reviewerId);
+        isReviewerParticipant = studentReqs.some(
+          (r) => r.ride_id === input.ride_id && r.status === 'ACCEPTED'
+        );
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!isRevieweeParticipant && !isRevieweeHost) {
+      try {
+        const studentReqs = await requestRepository.listRequestsByStudent(input.reviewee_id);
+        isRevieweeParticipant = studentReqs.some(
+          (r) => r.ride_id === input.ride_id && r.status === 'ACCEPTED'
+        );
+      } catch {
+        // ignore
+      }
+    }
 
     const isEligible =
       (isReviewerHost && isRevieweeParticipant) ||

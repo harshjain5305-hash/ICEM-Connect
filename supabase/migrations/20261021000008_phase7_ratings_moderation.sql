@@ -71,29 +71,51 @@ BEGIN
   END IF;
 
   -- Verify participation eligibility (Rules.md §22)
-  -- Case 1: Reviewer is Host, Reviewee is Confirmed Participant
-  IF v_ride.host_id = p_reviewer_id AND EXISTS (
-    SELECT 1 FROM public.ride_participants 
-    WHERE ride_id = p_ride_id AND student_id = p_reviewee_id AND status = 'CONFIRMED'
+  -- Case 1: Reviewer is Host, Reviewee is Confirmed/Completed Participant or Accepted Requester
+  IF v_ride.host_id = p_reviewer_id AND (
+    EXISTS (
+      SELECT 1 FROM public.ride_participants 
+      WHERE ride_id = p_ride_id AND student_id = p_reviewee_id AND status IN ('CONFIRMED', 'COMPLETED')
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.ride_join_requests
+      WHERE ride_id = p_ride_id AND student_id = p_reviewee_id AND status = 'ACCEPTED'
+    )
   ) THEN
     v_is_eligible := true;
   END IF;
 
-  -- Case 2: Reviewer is Confirmed Participant, Reviewee is Host
-  IF v_ride.host_id = p_reviewee_id AND EXISTS (
-    SELECT 1 FROM public.ride_participants 
-    WHERE ride_id = p_ride_id AND student_id = p_reviewer_id AND status = 'CONFIRMED'
+  -- Case 2: Reviewer is Confirmed/Completed Participant or Accepted Requester, Reviewee is Host
+  IF v_ride.host_id = p_reviewee_id AND (
+    EXISTS (
+      SELECT 1 FROM public.ride_participants 
+      WHERE ride_id = p_ride_id AND student_id = p_reviewer_id AND status IN ('CONFIRMED', 'COMPLETED')
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.ride_join_requests
+      WHERE ride_id = p_ride_id AND student_id = p_reviewer_id AND status = 'ACCEPTED'
+    )
   ) THEN
     v_is_eligible := true;
   END IF;
 
   -- Case 3: Co-passengers on the same ride
-  IF EXISTS (
-    SELECT 1 FROM public.ride_participants 
-    WHERE ride_id = p_ride_id AND student_id = p_reviewer_id AND status = 'CONFIRMED'
-  ) AND EXISTS (
-    SELECT 1 FROM public.ride_participants 
-    WHERE ride_id = p_ride_id AND student_id = p_reviewee_id AND status = 'CONFIRMED'
+  IF (
+    EXISTS (
+      SELECT 1 FROM public.ride_participants 
+      WHERE ride_id = p_ride_id AND student_id = p_reviewer_id AND status IN ('CONFIRMED', 'COMPLETED')
+    ) OR EXISTS (
+      SELECT 1 FROM public.ride_join_requests
+      WHERE ride_id = p_ride_id AND student_id = p_reviewer_id AND status = 'ACCEPTED'
+    )
+  ) AND (
+    EXISTS (
+      SELECT 1 FROM public.ride_participants 
+      WHERE ride_id = p_ride_id AND student_id = p_reviewee_id AND status IN ('CONFIRMED', 'COMPLETED')
+    ) OR EXISTS (
+      SELECT 1 FROM public.ride_join_requests
+      WHERE ride_id = p_ride_id AND student_id = p_reviewee_id AND status = 'ACCEPTED'
+    )
   ) THEN
     v_is_eligible := true;
   END IF;

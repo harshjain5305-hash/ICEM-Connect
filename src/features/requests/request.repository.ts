@@ -344,7 +344,7 @@ export const requestRepository = {
           .from('ride_participants')
           .select('*')
           .eq('ride_id', rideId)
-          .eq('status', 'CONFIRMED');
+          .in('status', ['CONFIRMED', 'COMPLETED']);
 
         if (!error && data && data.length > 0) {
           for (const item of data) {
@@ -360,20 +360,46 @@ export const requestRepository = {
 
     const localParticipants = getLocalData<RideParticipant>(LOCAL_STORAGE_PARTICIPANTS_KEY);
     const localList = Object.values(localParticipants).filter(
-      (p) => p.ride_id === rideId && p.status === 'CONFIRMED'
+      (p) => p.ride_id === rideId && (p.status === 'CONFIRMED' || p.status === 'COMPLETED')
     );
 
     const combinedMap = new Map<string, RideParticipant>();
     for (const p of liveResults) {
-      combinedMap.set(p.id, p);
+      combinedMap.set(p.student_id, p);
     }
     for (const p of localList) {
-      if (!combinedMap.has(p.id)) {
+      if (!combinedMap.has(p.student_id)) {
         if (!p.student) {
           p.student = await getPublicStudentInfo(p.student_id);
         }
-        combinedMap.set(p.id, p);
+        combinedMap.set(p.student_id, p);
       }
+    }
+
+    // Automatically derive participants from accepted join requests
+    // Guarantees any accepted passenger is recognized even if participants table sync lagged
+    try {
+      const requests = await this.listRequestsByRide(rideId);
+      for (const req of requests) {
+        if (req.status === 'ACCEPTED' && !combinedMap.has(req.student_id)) {
+          const studentInfo = req.student || (await getPublicStudentInfo(req.student_id));
+          const derived: RideParticipant = {
+            id: `part_req_${req.id}`,
+            ride_id: rideId,
+            student_id: req.student_id,
+            pickup_waypoint_id: req.pickup_waypoint_id,
+            drop_waypoint_id: req.drop_waypoint_id,
+            seat_count: req.seat_count,
+            status: 'CONFIRMED',
+            joined_at: req.created_at,
+            confirmed_at: req.updated_at || req.created_at,
+            student: studentInfo,
+          };
+          combinedMap.set(req.student_id, derived);
+        }
+      }
+    } catch {
+      // ignore
     }
 
     return Array.from(combinedMap.values());
