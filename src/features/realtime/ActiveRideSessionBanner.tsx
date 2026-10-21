@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Radio, Users, AlertTriangle, Play, Square, RefreshCw, Map, ChevronDown, ChevronUp } from 'lucide-react';
+import { Radio, Users, AlertTriangle, Play, Square, RefreshCw, Map, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useRideRoom } from './useRideRoom';
 import { useGeolocationWatcher } from '@/features/location-tracking/useGeolocationWatcher';
 import { LiveRideTrackingMap } from '@/features/location-tracking/LiveRideTrackingMap';
+import { RideCoordinationChat } from '@/features/rides/RideCoordinationChat';
 import type { LiveLocationUpdate } from '@/features/location-tracking/location.types';
 import type { Ride } from '@/features/rides/ride.types';
 import type { StudentProfile } from '@/features/auth/auth.types';
@@ -25,6 +26,7 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
   const isHost = Boolean(currentUser && currentUser.id === ride.host_id);
   const [liveLocation, setLiveLocation] = useState<LiveLocationUpdate | null>(null);
   const [showLiveMap, setShowLiveMap] = useState<boolean>(true);
+  const [showChat, setShowChat] = useState<boolean>(false);
 
   const {
     connectionState,
@@ -231,25 +233,37 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
           )}
 
           {isRideActive && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowLiveMap((prev) => !prev)}
-              className="h-8 text-xs text-primary gap-1"
-            >
-              <Map className="w-3.5 h-3.5" />
-              {showLiveMap ? (
-                <>
-                  <span>Hide Live Map</span>
-                  <ChevronUp className="w-3.5 h-3.5" />
-                </>
-              ) : (
-                <>
-                  <span>View Live Map</span>
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </>
-              )}
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowChat((prev) => !prev)}
+                className="h-8 text-xs text-primary gap-1"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>{showChat ? 'Hide Chat' : 'Trip Chat'}</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowLiveMap((prev) => !prev)}
+                className="h-8 text-xs text-primary gap-1"
+              >
+                <Map className="w-3.5 h-3.5" />
+                {showLiveMap ? (
+                  <>
+                    <span>Hide Live Map</span>
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  </>
+                ) : (
+                  <>
+                    <span>View Live Map</span>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -273,6 +287,19 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
         </div>
       )}
 
+      {/* TRIP COORDINATION CHAT (Phase 10 — Architecture.md §47) */}
+      {isRideActive && showChat && currentUser && (
+        <div className="mt-3">
+          <RideCoordinationChat
+            rideId={ride.id}
+            rideStatus={ride.status}
+            currentUserId={currentUser.id}
+            currentUserName={currentUser.name}
+            hostId={ride.host_id}
+          />
+        </div>
+      )}
+
       {/* Online Presence Roster */}
       {presenceUsers.length > 0 && (
         <div className="mt-3 pt-3 border-t border-slate-200/60 flex items-center gap-2 flex-wrap">
@@ -281,9 +308,9 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
             Online in Room ({presenceUsers.length}):
           </span>
           <div className="flex items-center gap-1.5 flex-wrap">
-            {presenceUsers.map((u) => (
+            {presenceUsers.map((u, idx) => (
               <span
-                key={u.user_id}
+                key={`${u.user_id}-${idx}`}
                 className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${
                   u.role === 'HOST'
                     ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'

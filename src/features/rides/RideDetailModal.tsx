@@ -9,6 +9,7 @@ import { WaypointSequenceList } from '@/features/routes/WaypointSequenceList';
 import { HostRequestsSection } from '@/features/requests/HostRequestsSection';
 import { JoinRequestModal } from '@/features/requests/JoinRequestModal';
 import { ActiveRideSessionBanner } from '@/features/realtime/ActiveRideSessionBanner';
+import { RideCoordinationChat } from './RideCoordinationChat';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import {
@@ -431,6 +432,19 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
                   <Users className="h-3.5 w-3.5" /> Request Seat
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* TRIP COORDINATION CHAT (Phase 10 — Architecture.md §47) */}
+          {user && currentRide.status !== 'DRAFT' && (
+            <div className="pt-2">
+              <RideCoordinationChat
+                rideId={currentRide.id}
+                rideStatus={currentRide.status}
+                currentUserId={user.id}
+                currentUserName={profile?.name || 'Student'}
+                hostId={currentRide.host_id}
+              />
             </div>
           )}
         </div>

@@ -30,7 +30,8 @@ export type RideEventType =
   | 'ride:seat_capacity_updated'
   | 'location:started'
   | 'location:update'
-  | 'location:stopped';
+  | 'location:stopped'
+  | 'ride:message:new';
 
 export interface BaseRideEvent<T extends RideEventType, P> {
   type: T;
@@ -154,6 +155,21 @@ export type LocationStoppedEvent = BaseRideEvent<
   }
 >;
 
+export interface RideMessagePayload {
+  message_id: string;
+  ride_id: string;
+  sender_id: string;
+  sender_name: string;
+  message: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export type RideMessageNewEvent = BaseRideEvent<
+  'ride:message:new',
+  RideMessagePayload
+>;
+
 export type RealtimeRideEvent =
   | SessionStartedEvent
   | SessionEndedEvent
@@ -166,7 +182,8 @@ export type RealtimeRideEvent =
   | SeatCapacityUpdatedEvent
   | LocationStartedEvent
   | LocationUpdateEvent
-  | LocationStoppedEvent;
+  | LocationStoppedEvent
+  | RideMessageNewEvent;
 
 export interface RoomPresenceUser {
   user_id: string;

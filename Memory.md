@@ -77,9 +77,9 @@ Rating / Reputation
 
 # 2. Current Overall State
 
-## State: PHASE 9 COMPLETE — LIVE LOCATION STREAMING, GPS THROTTLING & TRACKING MAP OPERATIONAL
+## State: PHASE 10 COMPLETE — MVP INTEGRATION & SYSTEM HARDENING OPERATIONAL
 
-The private Supabase Realtime channel architecture (`ride:{rideId}`), active ride session lifecycle (`ride_sessions` table with `ACTIVE` and `ENDED` states), live GPS geolocation tracking (`navigator.geolocation.watchPosition`), strict participant-only authorization boundary (host publishes; confirmed passengers/host subscribe; 403 for strangers; immediate completion shutoff), 5-second or 15-meter throttling engine, transient data privacy guarantee (zero coordinate persistence in database tables; only `last_location_at` session heartbeat), browser permission denial graceful recovery, and the interactive SVG `LiveRideTrackingMap` component have been implemented and verified according to `Phases.md §13`, `PRD.md §11, §12`, `Architecture.md §13, §14`, and `Rules.md §14, §15, §16, §17`.
+All core V1 student mobility functionality has been unified, tested, and hardened against prototype vulnerabilities according to `Phases.md §14, §30`, `PRD.md §14`, `Architecture.md §44, §47`, and `Rules.md §14, §15, §16, §17, §22, §23, §24`. Ride-scoped coordination chat (`public.ride_messages`), ephemeral chat lifecycle access rules (host, confirmed participants, and eligible requesters when seats remain; 403 for strangers; full-capacity requester restriction), automated 3-hour post-trip data retention and cleanup (`cleanup_expired_ride_messages`), read-only chat locking upon trip conclusion/cancellation, zero-message-body audit logging, and comprehensive end-to-end integration test coverage (`e2eJourneys.test.ts`) covering all 8 required journeys are fully operational.
 
 Current state:
 
@@ -89,7 +89,7 @@ Current state:
 - Development rules: **documented**
 - Development phases: **documented**
 - Design system/UX: **implemented with official Indira ICEM brand palette**
-- Project memory: **updated with Phase 9 verified evidence**
+- Project memory: **updated with Phase 10 verified evidence**
 - Frontend foundation: **VERIFIED & OPERATIONAL**
 - Backend connection & health service: **VERIFIED & OPERATIONAL**
 - Database baseline migration & RLS: **VERIFIED in supabase/migrations/**
@@ -118,6 +118,7 @@ Current state:
 - Database Phase 7 RPC migration: **VERIFIED in `20261021000008_phase7_ratings_moderation.sql`**
 - Database Phase 8 RPC migration: **VERIFIED in `20261021000009_phase8_realtime_ride_sessions.sql`**
 - Database Phase 9 RPC migration: **VERIFIED in `20261021000011_phase9_live_location.sql`**
+- Database Phase 10 RPC migration: **VERIFIED in `20261021000012_phase10_coordination_chat_hardening.sql`**
 - Post-trip 1–5 star ratings & atomic reputation scoring: **VERIFIED & TESTED (`RatingModal` + `rating.service.ts`)**
 - Private safety & misconduct incident reporting: **VERIFIED & TESTED (`ReportModal` + `moderation.service.ts`)**
 - Bidirectional user blocking with search & request exclusion: **VERIFIED & TESTED (`BlockUserModal` + `ProfileView`)**
@@ -127,7 +128,9 @@ Current state:
 - Live location tracking & host GPS throttling (5s / 15m): **VERIFIED & TESTED (`liveLocation.service.ts` + `useGeolocationWatcher.ts`)**
 - Interactive SVG tracking map with live heading & telemetry: **VERIFIED & TESTED (`LiveRideTrackingMap.tsx`)**
 - Zero coordinate database persistence & heartbeat timestamp: **VERIFIED & TESTED (`record_location_heartbeat`)**
-- Test suite (Vitest): **181/181 PASSING across 31 test suites**
+- Ride coordination chat & 3-hour post-trip retention: **VERIFIED & TESTED (`rideMessage.service.ts` + `RideCoordinationChat.tsx`)**
+- End-to-end integration journeys & system hardening: **VERIFIED & TESTED (`e2eJourneys.test.ts`)**
+- Test suite (Vitest): **200/200 PASSING across 33 test suites**
 - Production bundle build: **VERIFIED (0 TypeScript errors)**
 - Deployment: **pending (scheduled for Phase 11)**
 - Pilot usage: **not started (scheduled for Phase 11)**
@@ -1199,11 +1202,42 @@ These are documented requirements only. They must not be treated as implemented 
 
 # 29. Final State Statement
 
-**Phase 9 — Live Location has been executed and verified in the repository. Host-side browser GPS geolocation watching (`navigator.geolocation.watchPosition`), strict participant-only authorization boundary (host publishes; confirmed passengers/host subscribe; 403 for strangers; immediate completion shutoff), 5-second or 15-meter throttling engine (`shouldBroadcast`), transient data privacy guarantee (zero coordinate persistence in database tables; only `last_location_at` session heartbeat), browser permission denial graceful recovery, and the interactive SVG `LiveRideTrackingMap` component are fully operational. All 181 tests pass across 31 test suites (+10 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 10: MVP Integration + Hardening.**
+**Phase 10 — MVP Integration + Hardening has been executed and verified in the repository. All core V1 workflows (registration, ride creation, waypoint sequencing, matching, join requests with pickup notes, atomic capacity race prevention, realtime active ride sessions, live location streaming, and post-trip reputation rating) are fully integrated. Ephemeral ride-scoped coordination chat (`public.ride_messages`), automated 3-hour post-trip data retention and cleanup (`cleanup_expired_ride_messages`), read-only chat locking upon trip conclusion/cancellation, zero-message-body audit logging, and comprehensive end-to-end integration journeys (`e2eJourneys.test.ts`) covering all 8 required journeys are operational. All 200 tests pass across 33 test suites (+19 tests added), TypeScript builds with 0 errors, production build is verified, and the project is ready to proceed to Phase 11: Deployment + Pilot Preparation.**
 
 ---
 
 ## Changelog
+
+### 2026-10-22 — Phase 10 — MVP Integration & Hardening Implemented & Verified
+
+State:
+- Transitioned project state from Phase 9 to **Phase 10 Complete**.
+- Created database migration `supabase/migrations/20261021000012_phase10_coordination_chat_hardening.sql`:
+  - RLS policies on `public.ride_messages` (SELECT for host, confirmed participants, pending requesters, and admin with `expires_at > now()`; INSERT restricted to eligible participants while trip is not completed/cancelled).
+  - Stored procedure `verify_ride_chat_access(p_ride_id, p_user_id)`: validates read/write access based on trip state, participant confirmation, and capacity limits.
+  - Stored procedure `send_ride_message(p_ride_id, p_sender_id, p_message)`: validates length (1-500 chars), verifies caller authorization, rejects completed/cancelled rides with read-only error, restricts new requesters when capacity is full (`available_seats = 0`), sets 24h default expiration, and inserts message.
+  - Stored procedure `get_ride_messages(p_ride_id, p_user_id)`: verifies chat authorization, filters out expired messages (`expires_at > now()`), and orders by timestamp ascending.
+  - Stored procedure `cleanup_expired_ride_messages()`: idempotent database-level garbage collection deleting messages where `expires_at <= now()`.
+  - Updated `end_ride_session()` stored procedure: automatically caps all existing messages for the completed ride to `now() + interval '3 hours'` (`Architecture.md §47.7 & §47.8`).
+  - Added execute grants for `anon, authenticated, service_role`.
+- Implemented **Ride Coordination Chat Domain Layer**:
+  - `src/features/realtime/realtime.types.ts`: added `ride:message:new` event and `RideMessagePayload`.
+  - `src/features/rides/rideMessage.types.ts`: `RideMessage`, `SendRideMessageInput`, `ChatAccessCheckResult`.
+  - `src/features/rides/rideMessage.schema.ts`: Zod validation schema `sendRideMessageSchema` enforcing 1–500 character bounds.
+  - `src/features/rides/rideMessage.repository.ts`: Supabase RPC calls with robust offline/mock-free fallback, UUID validation, and non-expired read filtering.
+  - `src/features/rides/rideMessage.service.ts`: validation, rate-limiting guard (minimum 500ms between messages to prevent spam/flooding), metadata-only audit logging (`console.info('ride.message.sent', { rideId, senderId, messageId })` with zero message body logging), and realtime broadcast via `ride:message:new`.
+  - Integrated `rideSession.service.ts`: `endSession` automatically invokes `capMessagesExpiryOnCompletion(rideId)`.
+- Implemented **UI Coordination Components**:
+  - `src/features/rides/RideCoordinationChat.tsx`: message history container with sender identification, host badges, relative timestamps, character counter, read-only notification banner when trip has completed, full-capacity restriction banner, and live realtime message synchronization.
+  - Embedded into `RideDetailModal.tsx` for trip participants and requesters.
+  - Embedded into `ActiveRideSessionBanner.tsx` with one-click `[Trip Chat / Hide Chat]` toggle.
+- Created Unit & Integration Test Suites:
+  - `src/features/rides/rideMessage.service.test.ts`: 14 unit tests verifying message length validation, host/passenger authorization, pending requester permissions, full-capacity requester rejection, 403 Forbidden for strangers, completed/cancelled read-only enforcement, expired message read filtering, 3-hour expiry capping, realtime broadcast dispatch, and zero message body logging in metadata.
+  - `src/features/integration/e2eJourneys.test.ts`: 5 end-to-end integration tests covering all 8 required Phase 10 journeys (full host journey, full passenger journey with matching and optional pickup note, capacity race concurrency, live location access controls, ride cancellation, rating eligibility, and server-authoritative admin moderation).
+- Verified test suite: **200/200 tests passing across 33 test suites**.
+- Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+- Verified production build: **clean bundle generated** (`npm run build`).
+- Set next implementation target to **Phase 11 — Deployment + Pilot Preparation**.
 
 ### 2026-10-21 — Phase 9 — Live Location Streaming, GPS Throttling & Interactive Map Implemented & Verified
 

@@ -3,6 +3,7 @@ import { rideRepository } from './ride.repository';
 import { requestRepository } from '@/features/requests/request.repository';
 import { notificationService } from '@/features/notifications/notification.service';
 import { realtimeService } from '@/features/realtime/realtime.service';
+import { rideMessageService } from './rideMessage.service';
 import type { RideSession } from '@/features/realtime/realtime.types';
 
 export const rideSessionService = {
@@ -128,6 +129,9 @@ export const rideSessionService = {
         },
       });
     }
+
+    // Cap message expiry to 3 hours upon completion (Architecture.md §47.7 & §47.8)
+    await rideMessageService.capMessagesExpiryOnCompletion(rideId).catch(() => {});
 
     return session;
   },
