@@ -1,0 +1,55 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
+import App from './App';
+
+// Mock health check to resolve synchronously and cleanly in test
+vi.mock('@/features/health/healthService', () => ({
+  checkBackendHealth: vi.fn().mockResolvedValue({
+    status: 'healthy',
+    message: 'Backend baseline operational',
+    latencyMs: 15,
+    timestamp: '2026-10-21T12:00:00.000Z',
+    config: {
+      url: 'https://placeholder-project.supabase.co',
+      isConfigured: true,
+      institutionalDomain: 'indiraicem.ac.in',
+    },
+  }),
+}));
+
+describe('App Shell & Design System (Phase 0)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders the ICEM Connect branding and campus verification badge', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+    expect(screen.getByText('ICEM Connect')).toBeInTheDocument();
+    expect(screen.getByText(/Campus Verified/i)).toBeInTheDocument();
+  });
+
+  it('renders navigation tabs for Home, Find, Offer, My Rides, and Profile', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+    const homeElements = screen.getAllByText('Home');
+    expect(homeElements.length).toBeGreaterThan(0);
+
+    const findElements = screen.getAllByText('Find');
+    expect(findElements.length).toBeGreaterThan(0);
+
+    const offerElements = screen.getAllByText('Offer');
+    expect(offerElements.length).toBeGreaterThan(0);
+  });
+
+  it('renders Phase 0 Project Foundation verification card', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+    expect(screen.getByText(/Phase 0 — Project Foundation Status/i)).toBeInTheDocument();
+    expect(screen.getByText(/Design System & Tokens/i)).toBeInTheDocument();
+    expect(screen.getByText(/Supabase Backend Integration/i)).toBeInTheDocument();
+  });
+});
