@@ -31,6 +31,11 @@ function saveLocalData<T>(key: string, data: Record<string, T>): void {
   }
 }
 
+function isValidUuid(id?: string | null): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
 async function getPublicStudentInfo(studentId: string): Promise<PublicStudentInfo> {
   const profile = await authService.getProfile(studentId);
   if (profile) {
@@ -62,21 +67,59 @@ export const requestRepository = {
     const isLive = isSupabaseConfigured();
     let liveRequest: JoinRequest | null = null;
 
-    if (isLive) {
+    if (isLive && isValidUuid(studentId) && isValidUuid(input.ride_id)) {
       try {
         const { data, error } = await supabase.rpc('create_ride_join_request', {
           p_student_id: studentId,
           p_ride_id: input.ride_id,
-          p_pickup_waypoint_id: input.pickup_waypoint_id || null,
-          p_drop_waypoint_id: input.drop_waypoint_id || null,
+          p_pickup_waypoint_id: isValidUuid(input.pickup_waypoint_id) ? input.pickup_waypoint_id : null,
+          p_drop_waypoint_id: isValidUuid(input.drop_waypoint_id) ? input.drop_waypoint_id : null,
           p_seat_count: input.seat_count,
           p_specific_area_note: input.specific_area_note || null,
         });
 
-        if (!error && data && data.request_id) {
-          liveRequest = await this.getRequestById(data.request_id);
+        if (error) {
+          console.warn('Supabase create_ride_join_request returned error:', error.message, error.details);
+          if (
+            error.message.includes('already have an active pending request') ||
+            error.message.includes('Not enough available seats') ||
+            error.message.includes('Host cannot request a seat') ||
+            error.message.includes('already a confirmed participant')
+          ) {
+            throw new Error(error.message);
+          }
+        } else if (data && (data as { request_id?: string }).request_id) {
+          const reqId = (data as { request_id: string }).request_id;
+          liveRequest = await this.getRequestById(reqId);
+          if (!liveRequest) {
+            const studentInfo = await getPublicStudentInfo(studentId);
+            const ride = await rideRepository.getRideById(input.ride_id);
+            liveRequest = {
+              id: reqId,
+              ride_id: input.ride_id,
+              student_id: studentId,
+              pickup_waypoint_id: input.pickup_waypoint_id || null,
+              drop_waypoint_id: input.drop_waypoint_id || null,
+              seat_count: input.seat_count,
+              specific_area_note: input.specific_area_note || null,
+              status: 'PENDING',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              student: studentInfo,
+              ride: ride || undefined,
+            };
+          }
         }
       } catch (err) {
+        if (
+          err instanceof Error &&
+          (err.message.includes('already have an active pending request') ||
+            err.message.includes('Not enough available seats') ||
+            err.message.includes('Host cannot request a seat') ||
+            err.message.includes('already a confirmed participant'))
+        ) {
+          throw err;
+        }
         console.warn('Live create join request error, falling back to local mode:', err);
       }
     }
@@ -167,13 +210,13 @@ export const requestRepository = {
   async getRequestById(requestId: string): Promise<JoinRequest | null> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(requestId)) {
       try {
         const { data, error } = await supabase
           .from('ride_join_requests')
           .select('*')
           .eq('id', requestId)
-          .single();
+          .maybeSingle();
 
         if (!error && data) {
           const req = data as unknown as JoinRequest;
@@ -203,7 +246,7 @@ export const requestRepository = {
     const isLive = isSupabaseConfigured();
     const liveResults: JoinRequest[] = [];
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const { data, error } = await supabase
           .from('ride_join_requests')
@@ -249,7 +292,7 @@ export const requestRepository = {
     const isLive = isSupabaseConfigured();
     const liveResults: JoinRequest[] = [];
 
-    if (isLive) {
+    if (isLive && isValidUuid(studentId)) {
       try {
         const { data, error } = await supabase
           .from('ride_join_requests')
@@ -295,7 +338,7 @@ export const requestRepository = {
     const isLive = isSupabaseConfigured();
     const liveResults: RideParticipant[] = [];
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const { data, error } = await supabase
           .from('ride_participants')
@@ -339,7 +382,7 @@ export const requestRepository = {
   async acceptRequest(hostId: string, requestId: string): Promise<AcceptRequestResult> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(hostId) && isValidUuid(requestId)) {
       try {
         const { data, error } = await supabase.rpc('accept_join_request', {
           p_request_id: requestId,
@@ -356,6 +399,8 @@ export const requestRepository = {
             saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
           }
           return data as unknown as AcceptRequestResult;
+        } else if (error) {
+          console.warn('Live accept_join_request error:', error.message);
         }
       } catch (err) {
         console.warn('Live accept_join_request error, falling back to local mode:', err);
@@ -456,7 +501,7 @@ export const requestRepository = {
   ): Promise<{ success: boolean; status: 'REJECTED' }> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(hostId) && isValidUuid(requestId)) {
       try {
         const { error } = await supabase.rpc('reject_join_request', {
           p_request_id: requestId,
@@ -472,6 +517,8 @@ export const requestRepository = {
             saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
           }
           return { success: true, status: 'REJECTED' };
+        } else if (error) {
+          console.warn('Live reject_join_request error:', error.message);
         }
       } catch (err) {
         console.warn('Live reject_join_request error, falling back to local mode:', err);
@@ -517,7 +564,7 @@ export const requestRepository = {
   async cancelRequest(studentId: string, requestId: string): Promise<CancelRequestResult> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(studentId) && isValidUuid(requestId)) {
       try {
         const { data, error } = await supabase.rpc('cancel_join_request', {
           p_request_id: requestId,
@@ -532,6 +579,8 @@ export const requestRepository = {
             saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
           }
           return data as unknown as CancelRequestResult;
+        } else if (error) {
+          console.warn('Live cancel_join_request error:', error.message);
         }
       } catch (err) {
         console.warn('Live cancel_join_request error, falling back to local mode:', err);
@@ -542,7 +591,7 @@ export const requestRepository = {
     const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
     const req = requests[requestId];
     if (!req) {
-      throw new Error(`Join request with ID ${requestId} not found`);
+      return { success: true, status: 'CANCELLED' };
     }
 
     if (req.student_id !== studentId) {

@@ -22,6 +22,11 @@ function getLocalData<T>(key: string): Record<string, T> {
   }
 }
 
+function isValidUuid(id?: string | null): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
 function saveLocalData<T>(key: string, data: Record<string, T>) {
   try {
     localStorage.setItem(key, JSON.stringify(data));
@@ -149,7 +154,7 @@ export const routeService = {
     // 1. SAVE ROUTE
     let savedRoute: RideRoute;
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const { data: routeData, error: routeError } = await supabase
           .from('ride_routes')
@@ -164,7 +169,7 @@ export const routeService = {
             updated_at: now,
           })
           .select()
-          .single();
+          .maybeSingle();
 
         if (routeError || !routeData) {
           throw new Error(routeError?.message || 'Failed to save ride route');
@@ -181,7 +186,7 @@ export const routeService = {
     // 2. SAVE WAYPOINTS
     const savedWaypoints: RideWaypoint[] = [];
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         // Delete any existing waypoints for this ride first
         await supabase.from('ride_waypoints').delete().eq('ride_id', rideId);
@@ -224,13 +229,13 @@ export const routeService = {
   async getRouteForRide(rideId: string): Promise<RideRoute | null> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const { data } = await supabase
           .from('ride_routes')
           .select('*')
           .eq('ride_id', rideId)
-          .single();
+          .maybeSingle();
         if (data) return data as unknown as RideRoute;
       } catch (err) {
         console.warn('Live Supabase getRouteForRide error:', err);
@@ -247,7 +252,7 @@ export const routeService = {
   async getWaypointsForRide(rideId: string): Promise<RideWaypoint[]> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const { data } = await supabase
           .from('ride_waypoints')

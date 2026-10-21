@@ -20,12 +20,17 @@ function saveLocalData<T>(key: string, data: Record<string, T>): void {
   }
 }
 
+function isValidUuid(id?: string | null): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
 export const notificationRepository = {
   async createNotification(input: CreateNotificationInput): Promise<AppNotification> {
     const isLive = isSupabaseConfigured();
     let liveNotif: AppNotification | null = null;
 
-    if (isLive) {
+    if (isLive && isValidUuid(input.user_id)) {
       try {
         const { data, error } = await supabase
           .from('notifications')
@@ -38,10 +43,12 @@ export const notificationRepository = {
             read: false,
           })
           .select()
-          .single();
+          .maybeSingle();
 
         if (!error && data) {
           liveNotif = data as unknown as AppNotification;
+        } else if (error) {
+          console.warn('Live notification insert error (persisting locally):', error.message);
         }
       } catch (err) {
         console.warn('Live notification create error, persisting locally:', err);
@@ -71,7 +78,7 @@ export const notificationRepository = {
     const isLive = isSupabaseConfigured();
     const liveResults: AppNotification[] = [];
 
-    if (isLive) {
+    if (isLive && isValidUuid(userId)) {
       try {
         const { data, error } = await supabase
           .from('notifications')
@@ -109,7 +116,7 @@ export const notificationRepository = {
   async markAsRead(notificationId: string): Promise<void> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(notificationId)) {
       try {
         await supabase
           .from('notifications')
@@ -130,7 +137,7 @@ export const notificationRepository = {
   async markAllAsRead(userId: string): Promise<void> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(userId)) {
       try {
         await supabase
           .from('notifications')

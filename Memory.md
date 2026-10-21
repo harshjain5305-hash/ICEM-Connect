@@ -1196,6 +1196,20 @@ These are documented requirements only. They must not be treated as implemented 
 
 ## Changelog
 
+### 2026-10-21 — Phase 6 RPC & Schema Hotfix — Stored Procedures, UUID Validation & Policy Hardening
+
+State:
+- Diagnosed live Supabase errors reported in browser network log:
+  1. `create_ride_join_request 400 Bad Request`: fixed PL/pgSQL function checking `v_student.is_verified` (table `students` uses `status = 'ACTIVE'`); auto-provisions active student profile if user authenticated in `auth.users`; added defensive nullification for invalid/non-existent waypoint IDs to prevent foreign key errors.
+  2. `notifications 403 Forbidden`: created missing INSERT policy for `public.notifications` (`CREATE POLICY "Allow notification inserts" ON public.notifications FOR INSERT WITH CHECK (true)`).
+  3. `ride_routes 406 Not Acceptable`: replaced PostgREST `.single()` calls with `.maybeSingle()` across `route.service.ts`, `ride.repository.ts`, `request.repository.ts`, and `notification.repository.ts` so zero-result queries cleanly return null rather than 406 Not Acceptable.
+  4. `cancel_join_request 400 Bad Request`: added strict UUID guards (`isValidUuid`) before sending request, user, and ride IDs to Supabase RPCs/queries, preventing PostgreSQL deserialization crashes on local mock IDs; added `COALESCE(v_student.name, 'A passenger')` to prevent NULL string concatenation in notification insertion.
+- Created SQL migration `supabase/migrations/20261021000007_phase6_fix_rpc_and_policies.sql` containing updated stored procedures, execute grants (`GRANT EXECUTE ON FUNCTION ... TO anon, authenticated, service_role`), and updated RLS policies for `public.notifications`, `public.ride_routes`, `public.ride_waypoints`, `public.ride_join_requests`, and `public.ride_participants`.
+- Updated `20261021000006_phase6_join_requests_capacity.sql` with matching definitions.
+- Verified test suite: 127/127 tests passing across 25 test files.
+- Verified TypeScript compilation: 0 errors (`npx tsc --noEmit`).
+- Verified production build: cleanly generated (`npm run build`).
+
 ### 2026-10-21 — Phase 6 Hardening — Hybrid Storage Sync, Host Card Request Actions & End-to-End Integration Verified
 
 State:

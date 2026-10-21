@@ -29,6 +29,11 @@ function getLocalData<T>(key: string): Record<string, T> {
   }
 }
 
+function isValidUuid(id?: string | null): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
 function saveLocalData<T>(key: string, data: Record<string, T>) {
   try {
     localStorage.setItem(key, JSON.stringify(data));
@@ -203,13 +208,13 @@ export const rideRepository = {
   async getRideById(rideId: string): Promise<Ride | null> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const { data } = await supabase
           .from('rides')
           .select('*')
           .eq('id', rideId)
-          .single();
+          .maybeSingle();
         if (data) {
           return await hydrateLocations(data as unknown as Ride);
         }
@@ -229,7 +234,7 @@ export const rideRepository = {
   async listRidesByHost(hostId: string): Promise<Ride[]> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(hostId)) {
       try {
         const { data } = await supabase
           .from('rides')
@@ -297,7 +302,7 @@ export const rideRepository = {
     const isLive = isSupabaseConfigured();
     const now = new Date().toISOString();
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const payload: Record<string, unknown> = { updated_at: now };
         if (updates.origin_location_id) payload.origin_location_id = updates.origin_location_id;
@@ -315,7 +320,7 @@ export const rideRepository = {
           .update(payload)
           .eq('id', rideId)
           .select()
-          .single();
+          .maybeSingle();
 
         if (error || !data) throw new Error(error?.message || 'Failed to update ride');
         return await hydrateLocations(data as unknown as Ride);
@@ -346,7 +351,7 @@ export const rideRepository = {
     const isLive = isSupabaseConfigured();
     const now = new Date().toISOString();
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const payload: Record<string, unknown> = {
           status: newStatus,
@@ -361,7 +366,7 @@ export const rideRepository = {
           .update(payload)
           .eq('id', rideId)
           .select()
-          .single();
+          .maybeSingle();
 
         if (error || !data) throw new Error(error?.message || 'Failed to update ride status');
         return await hydrateLocations(data as unknown as Ride);
@@ -392,7 +397,7 @@ export const rideRepository = {
   async deleteDraftRide(rideId: string): Promise<boolean> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const { error } = await supabase
           .from('rides')
@@ -420,7 +425,7 @@ export const rideRepository = {
   async createWaypoint(rideId: string, input: CreateWaypointInput): Promise<RideWaypoint> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(rideId)) {
       try {
         const { data, error } = await supabase
           .from('ride_waypoints')
@@ -435,7 +440,7 @@ export const rideRepository = {
             distance_from_start_meters: input.distance_from_start_meters || null,
           })
           .select()
-          .single();
+          .maybeSingle();
 
         if (!error && data) return data as unknown as RideWaypoint;
       } catch (err) {
@@ -494,21 +499,21 @@ export const rideRepository = {
   async createJoinRequest(studentId: string, input: CreateJoinRequestInput): Promise<RideJoinRequest> {
     const isLive = isSupabaseConfigured();
 
-    if (isLive) {
+    if (isLive && isValidUuid(studentId) && isValidUuid(input.ride_id)) {
       try {
         const { data, error } = await supabase
           .from('ride_join_requests')
           .insert({
             ride_id: input.ride_id,
             student_id: studentId,
-            pickup_waypoint_id: input.pickup_waypoint_id,
-            drop_waypoint_id: input.drop_waypoint_id,
+            pickup_waypoint_id: isValidUuid(input.pickup_waypoint_id) ? input.pickup_waypoint_id : null,
+            drop_waypoint_id: isValidUuid(input.drop_waypoint_id) ? input.drop_waypoint_id : null,
             seat_count: input.seat_count,
             specific_area_note: input.specific_area_note || null,
             status: 'PENDING',
           })
           .select()
-          .single();
+          .maybeSingle();
 
         if (!error && data) return data as unknown as RideJoinRequest;
       } catch (err) {

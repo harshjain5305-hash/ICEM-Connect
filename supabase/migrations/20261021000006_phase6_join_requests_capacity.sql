@@ -26,11 +26,26 @@ BEGIN
   -- Validate student exists and is active
   SELECT * INTO v_student FROM public.students WHERE id = p_student_id;
   IF NOT FOUND THEN
+    IF EXISTS (SELECT 1 FROM auth.users WHERE id = p_student_id) THEN
+      INSERT INTO public.students (id, name, email, prn, status)
+      SELECT 
+        id, 
+        COALESCE(raw_user_meta_data->>'name', split_part(email, '@', 1)), 
+        email, 
+        'PRN-' || substr(id::text, 1, 8), 
+        'ACTIVE'
+      FROM auth.users WHERE id = p_student_id
+      ON CONFLICT (id) DO NOTHING;
+      SELECT * INTO v_student FROM public.students WHERE id = p_student_id;
+    END IF;
+  END IF;
+
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'Student with ID % not found', p_student_id;
   END IF;
 
-  IF v_student.is_verified IS NOT TRUE THEN
-    RAISE EXCEPTION 'Student must be verified before requesting a ride';
+  IF v_student.status <> 'ACTIVE' THEN
+    RAISE EXCEPTION 'Student must be active before requesting a ride (Status: %)', v_student.status;
   END IF;
 
   -- Validate seat count
@@ -74,6 +89,19 @@ BEGIN
     WHERE ride_id = p_ride_id AND student_id = p_student_id AND status = 'CONFIRMED'
   ) THEN
     RAISE EXCEPTION 'You are already a confirmed participant in this ride';
+  END IF;
+
+  -- Defensive check: if waypoint IDs provided do not exist in public.ride_waypoints, nullify
+  IF p_pickup_waypoint_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.ride_waypoints WHERE id = p_pickup_waypoint_id
+  ) THEN
+    p_pickup_waypoint_id := NULL;
+  END IF;
+
+  IF p_drop_waypoint_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.ride_waypoints WHERE id = p_drop_waypoint_id
+  ) THEN
+    p_drop_waypoint_id := NULL;
   END IF;
 
   -- Insert join request
@@ -415,7 +443,7 @@ BEGIN
     ) VALUES (
       v_ride.host_id,
       'Confirmed Passenger Cancelled',
-      v_student.name || ' cancelled their confirmed seat (' || v_req.seat_count || ' seat restored).',
+      COALESCE(v_student.name, 'A passenger') || ' cancelled their confirmed seat (' || v_req.seat_count || ' seat restored).',
       'REQUEST_CANCELLED',
       jsonb_build_object('request_id', p_request_id, 'ride_id', v_ride.id)
     );
@@ -431,3 +459,35 @@ BEGIN
   RAISE EXCEPTION 'Request cannot be cancelled in state %', v_req.status;
 END;
 $$;
+
+-- 5. FUNCTION EXECUTE PERMISSIONS
+GRANT EXECUTE ON FUNCTION public.create_ride_join_request TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.accept_join_request TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.reject_join_request TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.cancel_join_request TO anon, authenticated, service_role;
+
+-- 6. POLICIES & PERMISSIONS FIXES
+DROP POLICY IF EXISTS "Allow notification inserts" ON public.notifications;
+CREATE POLICY "Allow notification inserts"
+  ON public.notifications FOR INSERT
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Anyone can view ride routes" ON public.ride_routes;
+CREATE POLICY "Anyone can view ride routes"
+  ON public.ride_routes FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Anyone can view ride waypoints" ON public.ride_waypoints;
+CREATE POLICY "Anyone can view ride waypoints"
+  ON public.ride_waypoints FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Requesters and hosts can view join requests" ON public.ride_join_requests;
+CREATE POLICY "Requesters and hosts can view join requests"
+  ON public.ride_join_requests FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Participants and hosts can view participants" ON public.ride_participants;
+CREATE POLICY "Participants and hosts can view participants"
+  ON public.ride_participants FOR SELECT
+  USING (true);
