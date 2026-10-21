@@ -31,7 +31,7 @@ CREATE POLICY "Eligible participants can view non-expired messages"
       OR EXISTS (
         SELECT 1 FROM public.ride_join_requests rjr
         WHERE rjr.ride_id = public.ride_messages.ride_id
-          AND rjr.passenger_id = auth.uid()
+          AND rjr.student_id = auth.uid()
           AND rjr.status = 'PENDING'
       )
       -- Admin override
@@ -61,7 +61,7 @@ CREATE POLICY "Authorized users can send ride messages"
             EXISTS (
               SELECT 1 FROM public.ride_join_requests rjr
               WHERE rjr.ride_id = r.id
-                AND rjr.passenger_id = auth.uid()
+                AND rjr.student_id = auth.uid()
                 AND rjr.status = 'PENDING'
             )
             AND r.available_seats > 0
@@ -114,7 +114,7 @@ BEGIN
   SELECT EXISTS (
     SELECT 1 FROM public.ride_join_requests
     WHERE ride_id = p_ride_id
-      AND passenger_id = p_user_id
+      AND student_id = p_user_id
       AND status = 'PENDING'
   ) INTO v_is_pending;
 
@@ -211,7 +211,7 @@ BEGIN
   SELECT EXISTS (
     SELECT 1 FROM public.ride_join_requests
     WHERE ride_id = p_ride_id
-      AND passenger_id = p_sender_id
+      AND student_id = p_sender_id
       AND status = 'PENDING'
   ) INTO v_is_pending;
 
@@ -226,7 +226,7 @@ BEGIN
   END IF;
 
   -- 4. Get sender name
-  SELECT full_name INTO v_sender_name
+  SELECT name INTO v_sender_name
   FROM public.students
   WHERE id = p_sender_id;
 
@@ -291,7 +291,7 @@ BEGIN
         'id', rm.id,
         'ride_id', rm.ride_id,
         'sender_id', rm.sender_id,
-        'sender_name', coalesce(s.full_name, 'Student'),
+        'sender_name', coalesce(s.name, 'Student'),
         'message', rm.message,
         'created_at', rm.created_at,
         'expires_at', rm.expires_at
@@ -394,15 +394,18 @@ BEGIN
       title,
       message,
       type,
-      related_entity_id,
-      related_entity_type
+      data,
+      created_at
     ) VALUES (
       v_participant.student_id,
       'Trip Concluded — Rate Your Host',
-      format('Your ride "%s" has concluded. Please rate your travel experience with your host.', v_ride.title),
-      'RATING_RECEIVED',
-      p_ride_id,
-      'ride'
+      'Your ride has concluded. Please rate your travel experience with your host.',
+      'SYSTEM',
+      jsonb_build_object(
+        'ride_id', p_ride_id,
+        'action', 'RIDE_COMPLETED'
+      ),
+      now()
     );
   END LOOP;
 
