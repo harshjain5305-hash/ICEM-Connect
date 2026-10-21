@@ -7,21 +7,16 @@ import { ProtectedRoute } from '@/features/auth/ProtectedRoute';
 import { ProfileView } from '@/features/profile/ProfileView';
 import { AdminPanel } from '@/features/admin/AdminPanel';
 import { HomeDashboard } from '@/features/home/HomeDashboard';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { LocationSelect } from '@/features/locations/LocationSelect';
-import type { Location } from '@/features/locations/location.schema';
 import { OfferRideForm } from '@/features/rides/OfferRideForm';
 import { MyRidesView } from '@/features/rides/MyRidesView';
-import { Compass, Search, ArrowLeft, LogIn, MapPin } from 'lucide-react';
+import { FindRideView } from '@/features/matching/FindRideView';
+import { ArrowLeft, LogIn } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
   const { user, isAuthenticated } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
-
-  const [findPickup, setFindPickup] = useState<Location | null>(null);
-  const [findDrop, setFindDrop] = useState<Location | null>(null);
 
   const renderTabContent = () => {
     switch (currentTab) {
@@ -48,60 +43,7 @@ const AppContent: React.FC = () => {
               </div>
             }
           >
-            <div className="mx-auto max-w-2xl px-4 py-8 space-y-4">
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Search className="h-5 w-5 text-primary" />
-                    <CardTitle>Find a Ride (Verified Student Segment)</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <LocationSelect
-                      label="Pickup Location"
-                      placeholder="e.g. ICEM Gate or Somatne Phata"
-                      value={findPickup?.id}
-                      onSelect={setFindPickup}
-                    />
-                    <LocationSelect
-                      label="Destination"
-                      placeholder="e.g. Talegaon Station or Bhosari"
-                      value={findDrop?.id}
-                      onSelect={setFindDrop}
-                    />
-                  </div>
-
-                  {findPickup && findDrop && (
-                    <div className="rounded-xl border border-primary/20 bg-[#003C84]/5 p-3.5 text-xs text-primary space-y-1">
-                      <div className="font-semibold flex items-center gap-1.5">
-                        <MapPin className="h-4 w-4 text-[#00A2A5]" />
-                        <span>Selected Route Segment</span>
-                      </div>
-                      <p className="text-foreground">
-                        {findPickup.name} &rarr; {findDrop.name}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Phase 2 Relational Model active. Deterministic route matching and join requests activate in Phase 5 &amp; 6.
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="rounded-lg border border-border bg-muted/40 p-4 text-xs text-muted-foreground space-y-1">
-                    <div className="font-semibold text-foreground flex items-center gap-1.5">
-                      <Compass className="h-4 w-4 text-primary" />
-                      <span>Phase 2 — Relational Locations Active</span>
-                    </div>
-                    <p>
-                      Locations are dynamically retrieved from the PostgreSQL <code>locations</code> seed table rather than hard-coded strings.
-                    </p>
-                  </div>
-                  <Button variant="outline" onClick={() => setCurrentTab('home')} className="gap-2">
-                    <ArrowLeft className="h-4 w-4" /> Back to Dashboard
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
+            <FindRideView onOfferClick={() => setCurrentTab('offer')} />
           </ProtectedRoute>
         );
 

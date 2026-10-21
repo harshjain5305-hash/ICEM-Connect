@@ -77,9 +77,9 @@ Rating / Reputation
 
 # 2. Current Overall State
 
-## State: PHASE 4 COMPLETE — ROUTES & MEANINGFUL WAYPOINTS ESTABLISHED
+## State: PHASE 5 COMPLETE — FIND RIDE & DETERMINISTIC MATCHING ENGINE OPERATIONAL
 
-The route provider abstraction, normalized polyline and GeoJSON LineString generation, geodesic mathematics (Haversine distance, bearing, corridor vector projection), automatic corridor transit waypoint discovery, strict waypoint sequencing ($sequence_1 < sequence_2 < \dots < sequence_n$), route storage integration, interactive SVG route corridor map preview (`RouteMapPreview`), and waypoint sequence timeline (`WaypointSequenceList`) have been implemented and verified according to `Phases.md §8`, `PRD.md §5 (UC-02) & §20-21`, `Rules.md §5-6`, and `Architecture.md §7`.
+The deterministic corridor route-segment matching engine, search interface (`FindRideView`), 100-point compatibility scoring algorithm (Architecture.md §9.6), directionality invariant validator ($seq_{pickup} < seq_{drop}$), spatial proximity tolerance with Haversine distance, and PostgreSQL search procedure migration (`search_compatible_rides`) have been implemented and verified according to `Phases.md §9`, `PRD.md §5 (UC-03) & §22`, `Rules.md §5-6`, and `Architecture.md §9`.
 
 Current state:
 
@@ -89,7 +89,7 @@ Current state:
 - Development rules: **documented**
 - Development phases: **documented**
 - Design system/UX: **implemented with official Indira ICEM brand palette**
-- Project memory: **updated with Phase 4 verified evidence**
+- Project memory: **updated with Phase 5 verified evidence**
 - Frontend foundation: **VERIFIED & OPERATIONAL**
 - Backend connection & health service: **VERIFIED & OPERATIONAL**
 - Database baseline migration & RLS: **VERIFIED in supabase/migrations/**
@@ -105,9 +105,13 @@ Current state:
 - Route provider abstraction & normalized geometry: **VERIFIED & TESTED (`InternalCorridorRouteProvider`)**
 - Automatic corridor waypoint sequencing: **VERIFIED & TESTED (`route.service.ts`)**
 - Interactive SVG route map & timeline UI: **VERIFIED & TESTED (`RouteMapPreview` + `WaypointSequenceList`)**
-- Test suite (Vitest): **96/96 PASSING across 18 test suites**
+- Find Ride search interface & filter controls: **VERIFIED & TESTED (`FindRideView`)**
+- Deterministic 100-point matching engine: **VERIFIED & TESTED (`matching.service.ts`)**
+- Strict directionality enforcement ($seq_{pickup} < seq_{drop}$): **VERIFIED & TESTED (0 reverse candidates)**
+- Database search RPC migration: **VERIFIED in `20261021000005_phase5_find_matching.sql`**
+- Test suite (Vitest): **109/109 PASSING across 20 test suites**
 - Production bundle build: **VERIFIED (0 TypeScript errors)**
-- Find Ride & Deterministic Matching: **next target (Phase 5)**
+- Join Requests & Capacity Management: **next target (Phase 6)**
 - Realtime implementation: **pending (scheduled for Phase 8)**
 - Live-location implementation: **pending (scheduled for Phase 9)**
 - Deployment: **pending (scheduled for Phase 11)**
@@ -1180,11 +1184,32 @@ These are documented requirements only. They must not be treated as implemented 
 
 # 29. Final State Statement
 
-**Phase 4 — Routes + Waypoints has been executed and verified in the repository. The route provider abstraction (`RouteProvider`), geodesic corridor detection (`isPointAlongCorridor`), normalized polyline and GeoJSON LineString generation (`InternalCorridorRouteProvider`), automatic corridor transit waypoint discovery, strict waypoint sequencing ($sequence_1 < sequence_2 < \dots < sequence_n$), relational database migration (`get_ride_route_and_waypoints`), responsive SVG route corridor preview (`RouteMapPreview`), and ordered waypoint sequence timeline (`WaypointSequenceList`) are fully operational. All 96 tests pass across 18 test suites (+16 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 5: Find Ride + Deterministic Matching.**
+**Phase 5 — Find Ride + Deterministic Matching has been executed and verified in the repository. The deterministic corridor matching engine (`matching.service.ts`), 100-point compatibility scoring algorithm (Architecture.md §9.6), directionality invariant validator ($seq_{pickup} < seq_{drop}$), spatial proximity tolerance with Haversine distance, PostgreSQL search procedure migration (`search_compatible_rides`), and responsive search interface (`FindRideView`) are fully operational. All 109 tests pass across 20 test suites (+13 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 6: Join Requests + Capacity + Notifications.**
 
 ---
 
 ## Changelog
+
+### 2026-10-21 — Phase 5 — Find Ride + Deterministic Matching Implemented & Verified
+
+State:
+- Transitioned project state from Phase 4 to **Phase 5 Complete**.
+- Implemented Zod search schema (`findRideSearchSchema`) and core matching types (`MatchCandidate`, `ScoreBreakdown`, `FindRideQueryResult`) in `src/features/matching/matching.schema.ts` and `matching.types.ts`.
+- Built deterministic 100-point matching engine in `src/features/matching/matching.service.ts`:
+  - Route alignment & proximity (40 points max) with direct waypoint match bonus and Haversine decay within 3.5 km.
+  - Departure time proximity (30 points max) respecting user-selected flexibility windows (±15 to ±60 mins).
+  - Seat capacity headroom (15 points max).
+  - Host reputation baseline (15 points max).
+  - Strict directionality enforcement: rejects any ride candidate where $seq_{pickup} \ge seq_{drop}$ with 0 candidates.
+  - Self-match guard: excludes rides hosted by the searching student.
+- Created SQL migration `supabase/migrations/20261021000005_phase5_find_matching.sql` defining `search_compatible_rides()` stored procedure with atomic spatial and temporal filtering.
+- Implemented responsive search interface in `src/features/matching/FindRideView.tsx` with pickup/drop autocomplete (`LocationSelect`), date/time pickers, flexibility pills, seats selector, ranked candidate cards with score badges (`% Match`), route segment chips, and empty state suggestions.
+- Updated `src/features/routes/route.service.ts` projection bounds to naturally include close-proximity ICEM campus transit nodes (Somatne Phata).
+- Integrated `FindRideView` into the `'find'` tab in `src/App.tsx`.
+- Verified test suite: 109/109 tests passing across 20 test suites (+13 new tests in `matching.service.test.ts` and `FindRideView.test.tsx`).
+- Verified TypeScript compilation: 0 errors with `tsc --noEmit`.
+- Verified production build: completed successfully with `vite build`.
+- Set next implementation target to **Phase 6 — Join Requests + Capacity + Notifications**.
 
 ### 2026-10-21 — Phase 4 — Routes + Waypoints Implemented & Verified
 

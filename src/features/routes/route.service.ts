@@ -59,7 +59,7 @@ export const routeService = {
       );
 
       // Must lie strictly between origin and destination along the corridor axis
-      if (check.inCorridor && check.projectionT > 0.08 && check.projectionT < 0.92) {
+      if (check.inCorridor && check.projectionT > 0.02 && check.projectionT < 0.98) {
         candidateNodes.push({
           location: loc,
           projectionT: check.projectionT,
