@@ -1,4 +1,5 @@
 import { rideRepository } from './ride.repository';
+import { rideSessionService } from './rideSession.service';
 import type { Ride, RideWaypoint } from './ride.types';
 import type { RideStatus } from '@/types/database';
 import {
@@ -166,17 +167,29 @@ export const rideService = {
   },
 
   /**
-   * Activates a ride when the host starts the journey.
+   * Activates a ride when the host starts the journey and initializes the active ride session.
    */
   async startRide(hostId: string, rideId: string): Promise<Ride> {
-    return await this.transitionRideStatus(hostId, rideId, 'ACTIVE');
+    const updated = await this.transitionRideStatus(hostId, rideId, 'ACTIVE');
+    try {
+      await rideSessionService.startSession(hostId, rideId);
+    } catch {
+      // proceeding defensively if session already created
+    }
+    return updated;
   },
 
   /**
-   * Marks an active journey as completed.
+   * Marks an active journey as completed and ends the active ride session.
    */
   async completeRide(hostId: string, rideId: string): Promise<Ride> {
-    return await this.transitionRideStatus(hostId, rideId, 'COMPLETED');
+    const updated = await this.transitionRideStatus(hostId, rideId, 'COMPLETED');
+    try {
+      await rideSessionService.endSession(hostId, rideId);
+    } catch {
+      // proceeding defensively if session already ended
+    }
+    return updated;
   },
 
   /**

@@ -77,9 +77,9 @@ Rating / Reputation
 
 # 2. Current Overall State
 
-## State: PHASE 7 COMPLETE — RATINGS, REPUTATION, USER BLOCKING, REPORTING & ADMIN MODERATION OPERATIONAL
+## State: PHASE 8 COMPLETE — REALTIME FOUNDATION & ACTIVE RIDE SESSIONS OPERATIONAL
 
-Post-trip ratings and atomic reputation updates (`submit_ride_rating`), private incident reporting (`create_user_report` & `resolve_report`), bidirectional user blocking (`block_user`, `unblock_user`, `matching.service.ts` exclusion, and `request.service.ts` join block), peer management in `ProfileView`, and the server-authoritative 4-tab administrative moderation console (`AdminPanel.tsx` with Campus Metrics, Incident Resolution, Student Registry with PRN audit, and Campus Ride Moderation) have been implemented and verified according to `Phases.md §11`, `PRD.md §15, §16`, `Rules.md §22–§24`, and `Architecture.md §9, §11, §13, §16`.
+The private Supabase Realtime channel architecture (`ride:{rideId}`), active ride session lifecycle (`ride_sessions` table with `ACTIVE` and `ENDED` states), server-side participant authorization boundary (host and confirmed participants allowed; unaffiliated students rejected with 403), presence synchronization (online roster of host and peers), automatic lifecycle broadcasts (`ride:session_started`, `ride:session_ended`, `ride:status_changed`), and the responsive `ActiveRideSessionBanner` UI component have been implemented and verified according to `Phases.md §12`, `Architecture.md §10, §12, §13.3, §14`, and `Rules.md §14`.
 
 Current state:
 
@@ -89,7 +89,7 @@ Current state:
 - Development rules: **documented**
 - Development phases: **documented**
 - Design system/UX: **implemented with official Indira ICEM brand palette**
-- Project memory: **updated with Phase 7 verified evidence**
+- Project memory: **updated with Phase 8 verified evidence**
 - Frontend foundation: **VERIFIED & OPERATIONAL**
 - Backend connection & health service: **VERIFIED & OPERATIONAL**
 - Database baseline migration & RLS: **VERIFIED in supabase/migrations/**
@@ -116,14 +116,16 @@ Current state:
 - Hybrid storage sync & fallback deduplication: **VERIFIED & TESTED (`request.repository.ts` + `notification.repository.ts`)**
 - Database Phase 6 RPC migration: **VERIFIED in `20261021000006_phase6_join_requests_capacity.sql` & `20261021000007_phase6_fix_rpc_and_policies.sql`**
 - Database Phase 7 RPC migration: **VERIFIED in `20261021000008_phase7_ratings_moderation.sql`**
+- Database Phase 8 RPC migration: **VERIFIED in `20261021000009_phase8_realtime_ride_sessions.sql`**
 - Post-trip 1–5 star ratings & atomic reputation scoring: **VERIFIED & TESTED (`RatingModal` + `rating.service.ts`)**
 - Private safety & misconduct incident reporting: **VERIFIED & TESTED (`ReportModal` + `moderation.service.ts`)**
 - Bidirectional user blocking with search & request exclusion: **VERIFIED & TESTED (`BlockUserModal` + `ProfileView`)**
 - Server-authoritative Campus Admin Console: **VERIFIED & TESTED (`AdminPanel.tsx` + `admin.service.ts`)**
-- Test suite (Vitest): **156/156 PASSING across 28 test suites**
+- Realtime channel rooms (`ride:{rideId}`) & server authorization: **VERIFIED & TESTED (`realtime.service.ts`)**
+- Active ride sessions & presence sync: **VERIFIED & TESTED (`rideSession.service.ts` + `ActiveRideSessionBanner.tsx`)**
+- Test suite (Vitest): **171/171 PASSING across 30 test suites**
 - Production bundle build: **VERIFIED (0 TypeScript errors)**
-- Realtime implementation: **next target (Phase 8)**
-- Live-location implementation: **pending (scheduled for Phase 9)**
+- Live-location implementation: **next target (Phase 9)**
 - Deployment: **pending (scheduled for Phase 11)**
 - Pilot usage: **not started (scheduled for Phase 11)**
 
@@ -1199,6 +1201,37 @@ These are documented requirements only. They must not be treated as implemented 
 ---
 
 ## Changelog
+
+### 2026-10-21 — Phase 8 — Realtime Foundation + Active Ride Sessions Implemented & Verified
+
+State:
+- Transitioned project state from Phase 7 to **Phase 8 Complete**.
+- Created database migration `supabase/migrations/20261021000009_phase8_realtime_ride_sessions.sql`:
+  - RLS policies on `public.ride_sessions` table (SELECT for host, confirmed participants, and admin; ALL for host).
+  - Stored procedure `verify_ride_room_access(p_ride_id, p_user_id)`: validates caller is host, confirmed participant, or admin.
+  - Stored procedure `start_ride_session(p_ride_id, p_host_id)`: verifies host ownership, ride status `PUBLISHED`/`CONFIRMED`, transitions ride to `ACTIVE`, creates/activates `ride_sessions` record, generates in-app notifications for participants.
+  - Stored procedure `end_ride_session(p_ride_id, p_host_id)`: verifies host ownership, transitions ride to `COMPLETED`, updates session to `ENDED`, marks participants `COMPLETED`, generates prompt-for-rating notifications for participants.
+  - Stored procedure `get_active_ride_session(p_ride_id, p_user_id)`: enforces authorization boundary before returning active session details.
+  - Granted execute permissions to `anon, authenticated, service_role`.
+- Implemented **Supabase Realtime Channel & Room Architecture**:
+  - `src/features/realtime/realtime.types.ts`: typed channel events (`ride:session_started`, `ride:session_ended`, `ride:status_changed`, `ride:participant_joined`, `ride:participant_left`, `ride:join_request_created`, `ride:join_request_accepted`, etc.), presence user interface, connection states.
+  - `src/features/realtime/realtime.service.ts`: canonical channel room naming `ride:{rideId}` (`Phases.md §12`), client & server-side authorization check (`canAccessRideRoom`), multi-peer presence tracking, and connection resilience with automatic event distribution across live Supabase channels and offline event bus.
+  - `src/features/realtime/useRideRoom.ts`: React hook managing channel room subscriptions, connection states, live presence sync, and event handlers.
+- Implemented **Active Ride Session Domain Layer**:
+  - `src/features/rides/rideSession.repository.ts`: Supabase RPC and localStorage fallback with `isValidUuid` check.
+  - `src/features/rides/rideSession.service.ts`: session start/end lifecycle enforcement, participant notifications, and realtime broadcast dispatch.
+  - Integrated `ride.service.ts`: `startRide` and `completeRide` now coordinate active ride sessions and emit realtime broadcasts.
+- Implemented **Active Ride Session UI & Controls**:
+  - `ActiveRideSessionBanner.tsx`: displays pulsing live status pill (`🟢 Live Room Connected`), journey progress, host presence roster, and contextual trip controls (`[Start Journey]` and `[Complete Journey]`).
+  - Integrated into `RideDetailModal.tsx` for host & participant view.
+  - Integrated into `MyRequestsView.tsx` for confirmed passenger bookings.
+- Created unit and integration test suites:
+  - `src/features/realtime/realtime.service.test.ts`: 7 tests verifying channel room naming `ride:{rideId}`, host & participant authorization, 403 rejection for unrelated students, multi-client broadcast dispatch, cross-ride room isolation, and presence sync.
+  - `src/features/rides/rideSession.service.test.ts`: 8 tests verifying session start, ride transition to ACTIVE, non-host forbidden rejection, session termination, completion notifications, rating prompts, and session access authorization boundaries.
+- Verified test suite: **171/171 tests passing across 30 test suites**.
+- Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+- Verified production build: **clean bundle generated** (`npm run build`).
+- Set next implementation target to **Phase 9 — Live Location**.
 
 ### 2026-10-21 — Phase 7 — Ratings + Reporting + User Blocking + Admin Moderation Implemented & Verified
 

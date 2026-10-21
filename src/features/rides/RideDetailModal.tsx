@@ -8,6 +8,7 @@ import { RouteMapPreview } from '@/features/routes/RouteMapPreview';
 import { WaypointSequenceList } from '@/features/routes/WaypointSequenceList';
 import { HostRequestsSection } from '@/features/requests/HostRequestsSection';
 import { JoinRequestModal } from '@/features/requests/JoinRequestModal';
+import { ActiveRideSessionBanner } from '@/features/realtime/ActiveRideSessionBanner';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import {
@@ -39,7 +40,7 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
   onClose,
   onRideUpdated,
 }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [currentRide, setCurrentRide] = useState<Ride>(ride);
   const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -135,6 +136,20 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
             </div>
             <p className="text-xs text-foreground/90">{statusMeta.description}</p>
           </div>
+
+          {/* ACTIVE RIDE SESSION & REALTIME PRESENCE (Phase 8) */}
+          {user && (
+            <ActiveRideSessionBanner
+              ride={currentRide}
+              currentUser={profile}
+              onStatusChanged={(newStatus) => {
+                setCurrentRide((prev) => ({ ...prev, status: newStatus as RideStatus }));
+                if (onRideUpdated) {
+                  onRideUpdated({ ...currentRide, status: newStatus as RideStatus });
+                }
+              }}
+            />
+          )}
 
           {/* ROUTE CORRIDOR & MAP */}
           <div className="space-y-3 rounded-xl border border-border/80 p-4 bg-muted/20">

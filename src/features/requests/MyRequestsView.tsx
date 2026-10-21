@@ -6,6 +6,7 @@ import { ratingService } from '@/features/ratings/rating.service';
 import { RatingModal } from '@/features/ratings/RatingModal';
 import { ReportModal } from '@/features/moderation/ReportModal';
 import { BlockUserModal } from '@/features/moderation/BlockUserModal';
+import { ActiveRideSessionBanner } from '@/features/realtime/ActiveRideSessionBanner';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
@@ -28,7 +29,7 @@ export interface MyRequestsViewProps {
 }
 
 export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -203,6 +204,16 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
                     <span>Destination / Drop: {req.ride?.destination?.name || 'Destination'}</span>
                   </div>
                 </div>
+
+                {/* REALTIME ACTIVE RIDE SESSION (Phase 8) */}
+                {req.status === 'ACCEPTED' && req.ride && (
+                  <ActiveRideSessionBanner
+                    ride={req.ride}
+                    currentUser={profile}
+                    onStatusChanged={() => fetchRequests()}
+                    onRateHost={() => setRatingReq(req)}
+                  />
+                )}
 
                 {/* DETAILS ROW */}
                 <div className="flex items-center justify-between text-muted-foreground">
