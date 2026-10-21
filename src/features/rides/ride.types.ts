@@ -24,6 +24,8 @@ export interface Ride {
   destination_location_id: string | null;
   origin?: LocationReference;
   destination?: LocationReference;
+  route?: RideRoute | null;
+  waypoints?: RideWaypoint[];
   departure_date: string;
   departure_time: string;
   total_seats: number;

@@ -77,9 +77,9 @@ Rating / Reputation
 
 # 2. Current Overall State
 
-## State: PHASE 3 COMPLETE — RIDE CREATION & RIDE LIFECYCLE ESTABLISHED
+## State: PHASE 4 COMPLETE — ROUTES & MEANINGFUL WAYPOINTS ESTABLISHED
 
-The verified ride creation flow, host seat offering form, deterministic ride state machine (`DRAFT` $\rightarrow$ `PUBLISHED` $\rightarrow$ `CONFIRMED` $\rightarrow$ `ACTIVE` $\rightarrow$ `COMPLETED` / `CANCELLED` / `EXPIRED`), "My Rides" host management dashboard, ride detail modal, atomic status transition database migration, and test coverage have been implemented and verified according to `Phases.md §7`, `PRD.md §5 (UC-02) & §10`, `Rules.md §6-9`, and `Architecture.md §11 & §18`.
+The route provider abstraction, normalized polyline and GeoJSON LineString generation, geodesic mathematics (Haversine distance, bearing, corridor vector projection), automatic corridor transit waypoint discovery, strict waypoint sequencing ($sequence_1 < sequence_2 < \dots < sequence_n$), route storage integration, interactive SVG route corridor map preview (`RouteMapPreview`), and waypoint sequence timeline (`WaypointSequenceList`) have been implemented and verified according to `Phases.md §8`, `PRD.md §5 (UC-02) & §20-21`, `Rules.md §5-6`, and `Architecture.md §7`.
 
 Current state:
 
@@ -89,7 +89,7 @@ Current state:
 - Development rules: **documented**
 - Development phases: **documented**
 - Design system/UX: **implemented with official Indira ICEM brand palette**
-- Project memory: **updated with Phase 3 verified evidence**
+- Project memory: **updated with Phase 4 verified evidence**
 - Frontend foundation: **VERIFIED & OPERATIONAL**
 - Backend connection & health service: **VERIFIED & OPERATIONAL**
 - Database baseline migration & RLS: **VERIFIED in supabase/migrations/**
@@ -102,9 +102,12 @@ Current state:
 - Ride creation flow & draft saving: **VERIFIED & TESTED (`OfferRideForm`)**
 - Deterministic ride state machine: **VERIFIED & TESTED (`ride.state.ts` + stored procedure)**
 - Host ride management dashboard: **VERIFIED & TESTED (`MyRidesView` + `RideDetailModal`)**
-- Test suite (Vitest): **80/80 PASSING across 14 test suites**
+- Route provider abstraction & normalized geometry: **VERIFIED & TESTED (`InternalCorridorRouteProvider`)**
+- Automatic corridor waypoint sequencing: **VERIFIED & TESTED (`route.service.ts`)**
+- Interactive SVG route map & timeline UI: **VERIFIED & TESTED (`RouteMapPreview` + `WaypointSequenceList`)**
+- Test suite (Vitest): **96/96 PASSING across 18 test suites**
 - Production bundle build: **VERIFIED (0 TypeScript errors)**
-- Routes + Waypoints: **next target (Phase 4)**
+- Find Ride & Deterministic Matching: **next target (Phase 5)**
 - Realtime implementation: **pending (scheduled for Phase 8)**
 - Live-location implementation: **pending (scheduled for Phase 9)**
 - Deployment: **pending (scheduled for Phase 11)**
@@ -572,34 +575,72 @@ The following are **not** counted as completed merely because they appear in doc
 
 # 12. Current Development Phase
 
-## Current phase: Phase 3 Completed; Ready for Phase 4 — Routes + Waypoints
+## Current phase: Phase 4 Completed; Ready for Phase 5 — Find Ride + Deterministic Matching
 
-Phase 3 — Ride Creation + Ride Lifecycle has been executed, tested, and verified against all criteria in `Phases.md §7`, `PRD.md §5 & §10`, `Rules.md §6-9`, and `Architecture.md §11 & §18`.
+Phase 4 — Routes + Waypoints has been executed, tested, and verified against all criteria in `Phases.md §8`, `PRD.md §5 & §20-21`, `Rules.md §5-6`, and `Architecture.md §7`.
 
-The next implementation milestone is **Phase 4 — Routes + Waypoints**.
+The next implementation milestone is **Phase 5 — Find Ride + Deterministic Matching**.
 
-Do not jump directly to passenger search matching (Phase 5), join requests (Phase 6), live location (Phase 9), or AI features before routes and waypoints are verified.
+Do not jump directly to join requests (Phase 6), live location (Phase 9), or AI features before search and deterministic route segment matching are verified.
 
 ---
 
 # 13. Immediate Next Task
 
-### Phase 4 — Routes + Waypoints
+### Phase 5 — Find Ride + Deterministic Matching
 
 Implement and verify:
 
-1. **Routing Provider Integration / Abstraction (`route.service.ts`):**
-   - Connect origin & destination to generate normalized route polyline, distance in meters, and travel duration in seconds.
-   - Server-side / Edge Function proxy to protect map provider credentials (`Architecture.md §2.5`).
-2. **Intermediate Waypoints Generation & Sequencing:**
-   - Extract and store ordered intermediate points (e.g., ICEM $\rightarrow$ Somatne Phata $\rightarrow$ Talegaon $\rightarrow$ Pimpri $\rightarrow$ Bhosari).
-   - Populate `ride_routes` and `ride_waypoints` tables with sequence order and relative distance from start.
-3. **Route Preview & Map Visualization:**
-   - Visual map preview displaying the corridor polyline and sequenced waypoints.
-   - Host inspection of intermediate points before publishing.
+1. **Passenger Search Inputs & Schema (`find.schema.ts`):**
+   - Pickup location, drop location, date, approximate departure time, time flexibility window ($\pm 15$ to $\pm 60$ mins), requested seats.
+2. **Deterministic 100-Point Matching Engine (`matching.service.ts`):**
+   - Route corridor compatibility: passenger pickup must occur strictly before drop along host route ($sequence_{pickup} < sequence_{drop}$).
+   - Lateral distance proximity scoring (distance from passenger pickup/drop to closest ride waypoints).
+   - Time proximity scoring (difference between host departure and passenger requested time).
+   - Host reputation and available seat capacity checks.
+3. **Find Ride Search Interface (`FindRideView.tsx`):**
+   - Location autocomplete for pickup & drop.
+   - Date and time selectors with flexibility chips.
+   - Ranked candidate match cards displaying match score (e.g. 94% Match), route corridor timeline, available seats, and host info.
 4. **Testing Suite:**
-   - Unit tests for route geometry normalization, waypoint sequencing, and directionality.
-   - Tests validating that waypoints maintain strict ascending sequence order.
+   - Unit tests for the deterministic 100-point formula.
+   - Route directionality verification (rejecting reverse trips where drop is before pickup).
+   - Integration tests for candidate ranking and capacity filtering.
+
+---
+
+### Phase 4 Evidence & Completion Record
+
+The following concrete evidence confirms Phase 4 is complete:
+
+1. **Polyline & Geodesic Math Utilities ([`src/features/routes/polyline.utils.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/polyline.utils.ts)):**
+   - Haversine great-circle distance calculation with meter-level accuracy.
+   - Initial bearing calculation (0..360 degrees).
+   - Standard Google/OSRM Polyline algorithm lossless encode and decode.
+   - Vector projection corridor detection (`isPointAlongCorridor`) using projection scalar $t \in [0, 1]$ and perpendicular lateral distance tolerance.
+   - Verified by 6 dedicated unit tests in [`src/features/routes/polyline.utils.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/polyline.utils.test.ts).
+2. **Route Provider Abstraction & Engine ([`src/features/routes/route.provider.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/route.provider.ts)):**
+   - `RouteProvider` interface decoupling domain logic from mapping vendors (`Architecture.md §7.1`).
+   - `InternalCorridorRouteProvider` applying PCMC road winding factor (1.25x), realistic commute speed (10 m/s), traffic stop buffer, smooth road vertex generation, and live OSRM fallback.
+   - Verified by 3 unit tests in [`src/features/routes/route.provider.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/route.provider.test.ts).
+3. **Route Domain Service & Relational Integration ([`src/features/routes/route.service.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/route.service.ts)):**
+   - `getCandidateWaypointsForCorridor`: automatically discovers authentic intermediate transit nodes situated along the corridor vector between origin and destination.
+   - `calculateRouteForLocations`: calculates complete normalized route with strictly ordered waypoints ($sequence_1 < sequence_2 < \dots < sequence_n$).
+   - `attachRouteToRide`: persists route to `ride_routes` and waypoints to `ride_waypoints`.
+   - Wired directly into `rideRepository.createRide` and `hydrateLocations` so all created rides automatically receive real routes and waypoints.
+   - Verified by 5 integration tests in [`src/features/routes/route.service.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/route.service.test.ts).
+4. **Database Migration ([`supabase/migrations/20261021000004_phase4_routes_waypoints.sql`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/supabase/migrations/20261021000004_phase4_routes_waypoints.sql)):**
+   - Indexes on `ride_routes(ride_id)`, `ride_waypoints(ride_id, sequence)`, and `ride_waypoints(location_id)`.
+   - Stored procedure `public.get_ride_route_and_waypoints(p_ride_id UUID)` returning normalized route and ordered waypoints JSON.
+5. **Interactive UI Components ([`src/features/routes/RouteMapPreview.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/RouteMapPreview.tsx), [`src/features/routes/WaypointSequenceList.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/WaypointSequenceList.tsx)):**
+   - Responsive SVG route map preview with gradient polyline, glow filter, origin/destination pulsing markers, sequenced waypoint nodes, distance/duration chips, and hover tooltips.
+   - Ordered vertical waypoint timeline displaying distance milestones (+X.X km), location type badges, and host toggle controls.
+   - Integrated into `OfferRideForm.tsx` (live corridor preview upon location selection) and `RideDetailModal.tsx` (route map and waypoints inspection).
+   - Verified by component tests in [`src/features/routes/RouteMapPreview.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/RouteMapPreview.test.tsx).
+6. **Verification & Tests:**
+   - 96/96 tests passing across 18 test suites (+16 tests added in Phase 4).
+   - `tsc --noEmit` passing with 0 errors.
+   - Production bundle compiled in 21.64s.
 
 ---
 
@@ -1139,11 +1180,27 @@ These are documented requirements only. They must not be treated as implemented 
 
 # 29. Final State Statement
 
-**Phase 3 — Ride Creation + Ride Lifecycle has been executed and verified in the repository. The verified student seat-offering form (`OfferRideForm`), deterministic ride state machine (`DRAFT` $\rightarrow$ `PUBLISHED` $\rightarrow$ `CONFIRMED` $\rightarrow$ `ACTIVE` $\rightarrow$ `COMPLETED` / `CANCELLED` / `EXPIRED`), "My Rides" host dashboard (`MyRidesView`), detailed ride inspection modal (`RideDetailModal`), atomic database migration stored procedure (`transition_ride_status`), and host ownership enforcement are fully operational. All 80 tests pass across 14 test suites (+37 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 4: Routes + Waypoints.**
+**Phase 4 — Routes + Waypoints has been executed and verified in the repository. The route provider abstraction (`RouteProvider`), geodesic corridor detection (`isPointAlongCorridor`), normalized polyline and GeoJSON LineString generation (`InternalCorridorRouteProvider`), automatic corridor transit waypoint discovery, strict waypoint sequencing ($sequence_1 < sequence_2 < \dots < sequence_n$), relational database migration (`get_ride_route_and_waypoints`), responsive SVG route corridor preview (`RouteMapPreview`), and ordered waypoint sequence timeline (`WaypointSequenceList`) are fully operational. All 96 tests pass across 18 test suites (+16 tests added), TypeScript builds with 0 errors, and the project is ready to proceed to Phase 5: Find Ride + Deterministic Matching.**
 
 ---
 
 ## Changelog
+
+### 2026-10-21 — Phase 4 — Routes + Waypoints Implemented & Verified
+
+State:
+- Transitioned project state from Phase 3 to **Phase 4 Complete**.
+- Implemented geodesic and polyline mathematics in `src/features/routes/polyline.utils.ts` (Haversine distance, bearing, standard lossless polyline encode/decode, and corridor vector projection).
+- Built routing provider abstraction in `route.types.ts` and `route.provider.ts` with `InternalCorridorRouteProvider` applying PCMC road winding factor (1.25x), traffic-calibrated travel duration, smooth road vertex generation, and live OSRM fallback.
+- Implemented `route.service.ts` for automatic corridor candidate waypoint discovery, route calculation, and database persistence (`ride_routes` and `ride_waypoints`).
+- Enhanced `ride.repository.ts` so all created rides automatically calculate and attach real routes and sequenced waypoints.
+- Created SQL migration `supabase/migrations/20261021000004_phase4_routes_waypoints.sql` with indexes and `get_ride_route_and_waypoints()` stored procedure.
+- Created interactive `RouteMapPreview.tsx` (responsive SVG canvas with glow filter, polyline path, pulsing origin/dest markers, and distance/duration chips) and `WaypointSequenceList.tsx` (vertical timeline with distance milestones and host toggle controls).
+- Integrated route corridor previews into `OfferRideForm.tsx` and `RideDetailModal.tsx`.
+- Verified test suite: 96/96 tests passing across 18 test suites (+16 new tests).
+- Verified TypeScript compilation: 0 errors with `tsc --noEmit`.
+- Verified production build: completed successfully with `vite build` in 21.64s.
+- Set next implementation target to **Phase 5 — Find Ride + Deterministic Matching**.
 
 ### 2026-10-21 — Phase 3 — Ride Creation + Ride Lifecycle Implemented & Verified
 

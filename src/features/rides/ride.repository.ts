@@ -13,6 +13,7 @@ import type {
 } from './ride.schema';
 import type { RideStatus } from '@/types/database';
 import { locationService } from '@/features/locations/location.service';
+import { routeService } from '@/features/routes/route.service';
 
 const LOCAL_STORAGE_RIDES_KEY = 'icem_connect_rides_db_v1';
 const LOCAL_STORAGE_WAYPOINTS_KEY = 'icem_connect_waypoints_db_v1';
@@ -37,8 +38,6 @@ function saveLocalData<T>(key: string, data: Record<string, T>) {
 }
 
 async function hydrateLocations(ride: Ride): Promise<Ride> {
-  if (ride.origin && ride.destination) return ride;
-
   let origin = ride.origin;
   let destination = ride.destination;
 
@@ -70,13 +69,23 @@ async function hydrateLocations(ride: Ride): Promise<Ride> {
     }
   }
 
-  return { ...ride, origin, destination };
+  let route = ride.route;
+  if (!route) {
+    route = await routeService.getRouteForRide(ride.id);
+  }
+
+  let waypoints = ride.waypoints;
+  if (!waypoints || waypoints.length === 0) {
+    waypoints = await routeService.getWaypointsForRide(ride.id);
+  }
+
+  return { ...ride, origin, destination, route, waypoints };
 }
 
 export const rideRepository = {
   /**
    * Creates a ride record with initial status ('DRAFT' or 'PUBLISHED').
-   * Available seats initialized to total_seats.
+   * Automatically calculates normalized corridor route and sequenced waypoints.
    */
   async createRide(
     hostId: string,
@@ -109,7 +118,20 @@ export const rideRepository = {
         if (error || !data) {
           throw new Error(error?.message || 'Failed to create ride');
         }
-        return await hydrateLocations(data as unknown as Ride);
+
+        const hydrated = await hydrateLocations(data as unknown as Ride);
+        try {
+          const calculated = await routeService.calculateRouteForLocations(
+            input.origin_location_id,
+            input.destination_location_id
+          );
+          const { route, waypoints } = await routeService.attachRouteToRide(hydrated.id, calculated);
+          hydrated.route = route;
+          hydrated.waypoints = waypoints;
+        } catch (routeErr) {
+          console.warn('Live route attachment warning:', routeErr);
+        }
+        return hydrated;
       } catch (err) {
         console.warn('Live Supabase ride create error, falling back to local mode:', err);
       }
@@ -159,35 +181,24 @@ export const rideRepository = {
     rides[rideId] = newRide;
     saveLocalData(LOCAL_STORAGE_RIDES_KEY, rides);
 
-    // Automatically create initial origin & destination waypoints
-    if (originLoc) {
-      await this.createWaypoint(rideId, {
-        sequence: 1,
-        label: originLoc.name,
-        type: 'ORIGIN',
-        latitude: originLoc.latitude,
-        longitude: originLoc.longitude,
-        location_id: originLoc.id,
-        distance_from_start_meters: 0,
-      });
-    }
-
-    if (destLoc) {
-      await this.createWaypoint(rideId, {
-        sequence: 2,
-        label: destLoc.name,
-        type: 'DESTINATION',
-        latitude: destLoc.latitude,
-        longitude: destLoc.longitude,
-        location_id: destLoc.id,
-      });
+    // Automatically calculate and attach corridor route and sequenced waypoints
+    try {
+      const calculatedRoute = await routeService.calculateRouteForLocations(
+        input.origin_location_id,
+        input.destination_location_id
+      );
+      const { route, waypoints } = await routeService.attachRouteToRide(rideId, calculatedRoute);
+      newRide.route = route;
+      newRide.waypoints = waypoints;
+    } catch (routeErr) {
+      console.warn('Local route attachment warning:', routeErr);
     }
 
     return newRide;
   },
 
   /**
-   * Fetches a ride by its ID with hydrated origin and destination.
+   * Fetches a ride by its ID with hydrated origin, destination, route, and waypoints.
    */
   async getRideById(rideId: string): Promise<Ride | null> {
     const isLive = isSupabaseConfigured();

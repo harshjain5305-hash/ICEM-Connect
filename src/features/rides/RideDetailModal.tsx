@@ -4,6 +4,8 @@ import type { RideStatus } from '@/types/database';
 import { useAuth } from '@/features/auth/useAuth';
 import { rideService } from './ride.service';
 import { RIDE_STATUS_METADATA, isRideCancellable } from './ride.state';
+import { RouteMapPreview } from '@/features/routes/RouteMapPreview';
+import { WaypointSequenceList } from '@/features/routes/WaypointSequenceList';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import {
@@ -131,11 +133,19 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
             <p className="text-xs text-foreground/90">{statusMeta.description}</p>
           </div>
 
-          {/* ROUTE CORRIDOR */}
+          {/* ROUTE CORRIDOR & MAP */}
           <div className="space-y-3 rounded-xl border border-border/80 p-4 bg-muted/20">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground block">
-              Route Corridor
+              Route Corridor &amp; Map
             </span>
+
+            {currentRide.route && (
+              <RouteMapPreview
+                route={currentRide.route}
+                waypoints={currentRide.waypoints || []}
+              />
+            )}
+
             <div className="space-y-3">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
@@ -173,6 +183,12 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {currentRide.waypoints && currentRide.waypoints.length > 2 && (
+              <div className="pt-2 border-t border-border/60">
+                <WaypointSequenceList waypoints={currentRide.waypoints} />
+              </div>
+            )}
           </div>
 
           {/* TRIP METRICS */}

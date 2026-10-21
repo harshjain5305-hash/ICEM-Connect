@@ -28,11 +28,11 @@ describe('Ride Repository & Relational Operations (Phase 2)', () => {
 
     // Verify waypoints were created
     const waypoints = await rideRepository.getWaypointsForRide(ride.id);
-    expect(waypoints.length).toBe(2);
+    expect(waypoints.length).toBeGreaterThanOrEqual(2);
     expect(waypoints[0].type).toBe('ORIGIN');
     expect(waypoints[0].sequence).toBe(1);
-    expect(waypoints[1].type).toBe('DESTINATION');
-    expect(waypoints[1].sequence).toBe(2);
+    expect(waypoints[waypoints.length - 1].type).toBe('DESTINATION');
+    expect(waypoints[waypoints.length - 1].sequence).toBe(waypoints.length);
   });
 
   it('adds intermediate waypoints with ordered sequences', async () => {

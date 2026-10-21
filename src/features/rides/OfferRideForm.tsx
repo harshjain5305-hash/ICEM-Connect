@@ -1,10 +1,14 @@
-import React, { useState, useId } from 'react';
+import React, { useState, useId, useEffect } from 'react';
 import { useAuth } from '@/features/auth/useAuth';
 import { LocationSelect } from '@/features/locations/LocationSelect';
 import type { Location } from '@/features/locations/location.schema';
 import { rideService, RideServiceError } from './ride.service';
 import type { Ride } from './ride.types';
 import type { VehicleType } from '@/types/database';
+import { RouteMapPreview } from '@/features/routes/RouteMapPreview';
+import { WaypointSequenceList } from '@/features/routes/WaypointSequenceList';
+import { routeService } from '@/features/routes/route.service';
+import type { CalculatedRoute } from '@/features/routes/route.types';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -68,6 +72,42 @@ export const OfferRideForm: React.FC<OfferRideFormProps> = ({
   const [isDraftSubmitting, setIsDraftSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdRide, setCreatedRide] = useState<Ride | null>(null);
+
+  const [calculatedRoute, setCalculatedRoute] = useState<CalculatedRoute | null>(null);
+  const [selectedWaypointSequences, setSelectedWaypointSequences] = useState<number[]>([]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (origin && destination && origin.id !== destination.id) {
+      routeService
+        .calculateRouteForLocations(origin.id, destination.id)
+        .then((res) => {
+          if (!isCancelled) {
+            setCalculatedRoute(res);
+            setSelectedWaypointSequences(res.waypoints.map((w) => w.sequence));
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to calculate preview route:', err);
+        });
+    } else {
+      setCalculatedRoute(null);
+      setSelectedWaypointSequences([]);
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [origin, destination]);
+
+  const handleToggleWaypoint = (sequence: number) => {
+    setSelectedWaypointSequences((prev) =>
+      prev.includes(sequence)
+        ? prev.filter((s) => s !== sequence)
+        : [...prev, sequence].sort((a, b) => a - b)
+    );
+  };
 
   const noteId = useId();
 
@@ -315,11 +355,33 @@ export const OfferRideForm: React.FC<OfferRideFormProps> = ({
           </div>
 
           {origin && destination && (
-            <div className="rounded-lg border border-primary/20 bg-[#003C84]/5 p-2.5 text-xs text-foreground flex items-center gap-2">
-              <span className="font-semibold text-primary">Selected Route:</span>
-              <span className="truncate">{origin.name}</span>
-              <ArrowRight className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span className="truncate">{destination.name}</span>
+            <div className="space-y-3 pt-1">
+              <div className="rounded-lg border border-primary/20 bg-[#003C84]/5 p-2.5 text-xs text-foreground flex items-center gap-2">
+                <span className="font-semibold text-primary">Selected Route:</span>
+                <span className="truncate">{origin.name}</span>
+                <ArrowRight className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="truncate">{destination.name}</span>
+              </div>
+
+              {calculatedRoute && (
+                <div className="space-y-3 pt-1">
+                  <RouteMapPreview
+                    route={calculatedRoute}
+                    waypoints={calculatedRoute.waypoints.filter(
+                      (w) =>
+                        w.sequence === 1 ||
+                        w.sequence === calculatedRoute.waypoints.length ||
+                        selectedWaypointSequences.includes(w.sequence)
+                    )}
+                  />
+                  <WaypointSequenceList
+                    waypoints={calculatedRoute.waypoints}
+                    interactive
+                    selectedSequences={selectedWaypointSequences}
+                    onToggleWaypoint={handleToggleWaypoint}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
