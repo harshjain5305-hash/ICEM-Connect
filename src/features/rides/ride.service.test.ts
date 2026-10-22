@@ -203,5 +203,65 @@ describe('Ride Service & Lifecycle Enforcement (Phase 3)', () => {
       expect(hostRides.length).toBe(2);
       expect(hostRides.every((r) => r.host_id === hostId)).toBe(true);
     });
+
+    it('immediately hides dismissed rides from host list while retaining in storage', async () => {
+      const ride1 = await rideService.createRide(hostId, validRidePayload);
+      const ride2 = await rideService.createRide(hostId, {
+        ...validRidePayload,
+        destination_location_id: 'loc_talegaon_station',
+      });
+
+      let hostRides = await rideService.listHostRides(hostId);
+      expect(hostRides.length).toBe(2);
+
+      // Host dismisses ride1 from UI
+      await rideService.dismissRide(hostId, ride1.id);
+
+      // Disappears from UI list immediately
+      hostRides = await rideService.listHostRides(hostId);
+      expect(hostRides.length).toBe(1);
+      expect(hostRides[0].id).toBe(ride2.id);
+
+      // Still exists in database / storage with deleted_at set (retained for 2-day grace window)
+      const storedRide = await rideService.getRide(ride1.id);
+      expect(storedRide.deleted_at).toBeDefined();
+    });
+
+    it('clears inactive rides for host', async () => {
+      const published = await rideService.createRide(hostId, validRidePayload);
+      const toComplete = await rideService.createRide(hostId, {
+        ...validRidePayload,
+        destination_location_id: 'loc_talegaon_station',
+      });
+      await rideService.startRide(hostId, toComplete.id);
+      await rideService.completeRide(hostId, toComplete.id);
+
+      await rideService.clearInactiveRides(hostId);
+
+      const hostRides = await rideService.listHostRides(hostId);
+      expect(hostRides.length).toBe(1);
+      expect(hostRides[0].id).toBe(published.id);
+    });
+
+    it('auto-purges dismissed rides from database/storage after 2 days (48 hours)', async () => {
+      const ride = await rideService.createRide(hostId, validRidePayload);
+      await rideService.dismissRide(hostId, ride.id);
+
+      // Simulate 3 days passing in storage (older than 2 days)
+      const storageKey = 'icem_connect_rides_db_v1';
+      const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      expect(stored[ride.id]).toBeDefined();
+
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      stored[ride.id].deleted_at = threeDaysAgo;
+      localStorage.setItem(storageKey, JSON.stringify(stored));
+
+      // Trigger listHostRides (which runs purgeExpiredDismissedRides)
+      await rideService.listHostRides(hostId);
+
+      // Verify ride is permanently wiped from storage
+      const afterPurge = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      expect(afterPurge[ride.id]).toBeUndefined();
+    });
   });
 });

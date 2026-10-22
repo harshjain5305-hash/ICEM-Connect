@@ -130,8 +130,11 @@ Current state:
 - Zero coordinate database persistence & heartbeat timestamp: **VERIFIED & TESTED (`record_location_heartbeat`)**
 - Ride coordination chat & 3-hour post-trip retention: **VERIFIED & TESTED (`rideMessage.service.ts` + `RideCoordinationChat.tsx`)**
 - End-to-end integration journeys & system hardening: **VERIFIED & TESTED (`e2eJourneys.test.ts`)**
-- Test suite (Vitest): **200/200 PASSING across 33 test suites**
-- Production bundle build: **VERIFIED (0 TypeScript errors)**
+- Cross-ride temporal conflict enforcement (±45 minutes): **VERIFIED & TESTED (`request.service.ts` & `getMinutesBetweenRides`)**
+- Immediate notification deletion & "Clear All" with slide gesture: **VERIFIED & TESTED (`NotificationBell.tsx`, `notification.repository.ts`, `notification.service.ts`)**
+- Slide-to-dismiss & "Clear Past" with 2-day auto-purge for Rides & Requests: **VERIFIED & TESTED (`SwipeableItem.tsx`, `MyRidesView.tsx`, `MyRequestsView.tsx`, `ride.repository.ts`, `request.repository.ts`, migration `20261022000001_soft_delete_and_auto_purge_2days.sql`)**
+- Test suite (Vitest): **221/221 PASSING across 34 test suites**
+- Production bundle build: **VERIFIED (0 TypeScript errors, clean Vite build)**
 - Deployment: **pending (scheduled for Phase 11)**
 - Pilot usage: **not started (scheduled for Phase 11)**
 

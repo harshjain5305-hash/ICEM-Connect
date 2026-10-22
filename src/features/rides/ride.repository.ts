@@ -229,10 +229,14 @@ export const rideRepository = {
   },
 
   /**
-   * Lists rides hosted by a specific student.
+   * Lists rides hosted by a specific student (excluding soft-deleted/dismissed rides).
+   * Automatically executes 2-day auto-purge for rides dismissed more than 48 hours ago.
    */
   async listRidesByHost(hostId: string): Promise<Ride[]> {
     const isLive = isSupabaseConfigured();
+
+    // Trigger auto-purge of rides soft-deleted > 2 days ago
+    await this.purgeExpiredDismissedRides();
 
     if (isLive && isValidUuid(hostId)) {
       try {
@@ -240,6 +244,7 @@ export const rideRepository = {
           .from('rides')
           .select('*')
           .eq('host_id', hostId)
+          .is('deleted_at', null)
           .order('departure_date', { ascending: false });
 
         if (data && data.length > 0) {
@@ -251,11 +256,73 @@ export const rideRepository = {
     }
 
     const rides = getLocalData<Ride>(LOCAL_STORAGE_RIDES_KEY);
-    const hostRides = Object.values(rides).filter((r) => r.host_id === hostId);
+    const hostRides = Object.values(rides).filter(
+      (r) => r.host_id === hostId && !r.deleted_at
+    );
     const hydrated = await Promise.all(hostRides.map((r) => hydrateLocations(r)));
     return hydrated.sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
+  },
+
+  /**
+   * Soft-deletes / dismisses a ride from the user's UI.
+   * Sets deleted_at = now(). The ride is immediately hidden from the UI
+   * and permanently auto-deleted from the database after 2 days (48 hours).
+   */
+  async dismissRide(hostId: string, rideId: string): Promise<void> {
+    const nowIso = new Date().toISOString();
+    const isLive = isSupabaseConfigured();
+
+    if (isLive && isValidUuid(rideId)) {
+      try {
+        await supabase
+          .from('rides')
+          .update({ deleted_at: nowIso })
+          .eq('id', rideId)
+          .eq('host_id', hostId);
+      } catch (err) {
+        console.warn('Live dismissRide error:', err);
+      }
+    }
+
+    const rides = getLocalData<Ride>(LOCAL_STORAGE_RIDES_KEY);
+    if (rides[rideId] && rides[rideId].host_id === hostId) {
+      rides[rideId].deleted_at = nowIso;
+      saveLocalData(LOCAL_STORAGE_RIDES_KEY, rides);
+    }
+  },
+
+  /**
+   * Permanently purges rides from storage/database that were soft-deleted > 2 days ago.
+   */
+  async purgeExpiredDismissedRides(): Promise<void> {
+    const isLive = isSupabaseConfigured();
+    const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    if (isLive) {
+      try {
+        await supabase.rpc('cleanup_dismissed_rides_and_requests');
+      } catch {
+        // Handled defensively
+      }
+    }
+
+    const rides = getLocalData<Ride>(LOCAL_STORAGE_RIDES_KEY);
+    let changed = false;
+    for (const [id, r] of Object.entries(rides)) {
+      if (r.deleted_at) {
+        const deletedTime = new Date(r.deleted_at).getTime();
+        if (now - deletedTime >= twoDaysMs) {
+          delete rides[id];
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      saveLocalData(LOCAL_STORAGE_RIDES_KEY, rides);
+    }
   },
 
   /**

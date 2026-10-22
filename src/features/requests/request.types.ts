@@ -22,6 +22,7 @@ export interface JoinRequest {
   status: JoinRequestStatus;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
   
   // Hydrated associations
   student?: PublicStudentInfo;

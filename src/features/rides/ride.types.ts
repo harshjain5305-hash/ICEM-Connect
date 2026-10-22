@@ -36,6 +36,7 @@ export interface Ride {
   created_at: string;
   updated_at: string;
   published_at?: string | null;
+  deleted_at?: string | null;
 }
 
 export interface RideRoute {

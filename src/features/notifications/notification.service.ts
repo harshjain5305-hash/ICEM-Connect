@@ -28,4 +28,14 @@ export const notificationService = {
     if (!userId) return;
     await notificationRepository.markAllAsRead(userId);
   },
+
+  async deleteNotification(notificationId: string): Promise<void> {
+    if (!notificationId) return;
+    await notificationRepository.deleteNotification(notificationId);
+  },
+
+  async clearAll(userId: string): Promise<void> {
+    if (!userId) return;
+    await notificationRepository.clearAllNotifications(userId);
+  },
 };

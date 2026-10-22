@@ -346,4 +346,68 @@ describe('Join Request Service & Transactional Capacity (Phase 6)', () => {
       ).rejects.toThrow(/already hosting a scheduled trip/i);
     });
   });
+
+  describe('Dismissal & 2-Day Auto-Purge Lifecycle', () => {
+    it('immediately hides dismissed requests from passenger UI while retaining in storage', async () => {
+      const req = await requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+      });
+
+      let list = await requestService.listRequestsByStudent(passenger1);
+      expect(list.length).toBe(1);
+
+      // Student dismisses from UI
+      await requestService.dismissRequest(passenger1, req.id);
+
+      // Disappears from UI immediately
+      list = await requestService.listRequestsByStudent(passenger1);
+      expect(list.length).toBe(0);
+
+      // Still stored in database/storage with deleted_at set (2-day grace retention)
+      const storageKey = 'icem_join_requests_v1';
+      const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      expect(stored[req.id]).toBeDefined();
+      expect(stored[req.id].deleted_at).toBeDefined();
+    });
+
+    it('clears inactive and cancelled requests from passenger UI', async () => {
+      const req = await requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+      });
+      await requestService.cancelRequest(passenger1, req.id);
+
+      let list = await requestService.listRequestsByStudent(passenger1);
+      expect(list.length).toBe(1);
+      expect(list[0].status).toBe('CANCELLED');
+
+      await requestService.clearInactiveRequests(passenger1);
+
+      list = await requestService.listRequestsByStudent(passenger1);
+      expect(list.length).toBe(0);
+    });
+
+    it('auto-purges dismissed requests older than 2 days (48 hours)', async () => {
+      const req = await requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+      });
+      await requestService.dismissRequest(passenger1, req.id);
+
+      const storageKey = 'icem_join_requests_v1';
+      const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      expect(stored[req.id]).toBeDefined();
+
+      // Simulate 3 days passing (older than 2-day threshold)
+      stored[req.id].deleted_at = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      localStorage.setItem(storageKey, JSON.stringify(stored));
+
+      // Trigger list query which runs purgeExpiredDismissedRequests
+      await requestService.listRequestsByStudent(passenger1);
+
+      const afterPurge = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      expect(afterPurge[req.id]).toBeUndefined();
+    });
+  });
 });

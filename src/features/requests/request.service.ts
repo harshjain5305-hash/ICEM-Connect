@@ -272,4 +272,28 @@ export const requestService = {
       throw new RequestServiceError('CANCEL_FAILED', (err as Error).message);
     }
   },
+
+  /**
+   * Dismisses a join request from the passenger's UI immediately, marking it for 2-day auto-purge from the database.
+   */
+  async dismissRequest(studentId: string, requestId: string): Promise<void> {
+    if (!studentId || !requestId) return;
+    await requestRepository.dismissRequest(studentId, requestId);
+  },
+
+  /**
+   * Dismisses all inactive/cancelled/rejected requests for the student from the UI.
+   */
+  async clearInactiveRequests(studentId: string): Promise<void> {
+    if (!studentId) return;
+    const requests = await requestRepository.listRequestsByStudent(studentId);
+    for (const req of requests) {
+      if (
+        ['CANCELLED', 'REJECTED'].includes(req.status) ||
+        (req.status === 'ACCEPTED' && req.ride?.status === 'COMPLETED')
+      ) {
+        await requestRepository.dismissRequest(studentId, req.id);
+      }
+    }
+  },
 };

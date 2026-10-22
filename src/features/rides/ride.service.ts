@@ -231,4 +231,25 @@ export const rideService = {
 
     return await rideRepository.deleteDraftRide(rideId);
   },
+
+  /**
+   * Dismisses a ride from the host's UI immediately, marking it for 2-day auto-purge from the database.
+   */
+  async dismissRide(hostId: string, rideId: string): Promise<void> {
+    if (!hostId || !rideId) return;
+    await rideRepository.dismissRide(hostId, rideId);
+  },
+
+  /**
+   * Dismisses all inactive/completed/cancelled rides for the host from the UI.
+   */
+  async clearInactiveRides(hostId: string): Promise<void> {
+    if (!hostId) return;
+    const rides = await rideRepository.listRidesByHost(hostId);
+    for (const r of rides) {
+      if (['COMPLETED', 'CANCELLED', 'EXPIRED'].includes(r.status)) {
+        await rideRepository.dismissRide(hostId, r.id);
+      }
+    }
+  },
 };

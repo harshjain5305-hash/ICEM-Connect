@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/features/auth/useAuth';
 import { notificationService } from './notification.service';
 import type { AppNotification } from './notification.types';
-import { Bell, CheckCheck, Clock, X } from 'lucide-react';
+import { Bell, CheckCheck, Clock, X, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { SwipeableItem } from '@/components/ui/SwipeableItem';
 
 export const NotificationBell: React.FC = () => {
   const { user } = useAuth();
@@ -69,6 +70,25 @@ export const NotificationBell: React.FC = () => {
     );
   };
 
+  const handleDeleteNotification = async (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    try {
+      await notificationService.deleteNotification(id);
+    } catch (err) {
+      console.error('Delete notification error:', err);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!user) return;
+    setNotifications([]);
+    try {
+      await notificationService.clearAll(user.id);
+    } catch (err) {
+      console.error('Clear all notifications error:', err);
+    }
+  };
+
   if (!user) return null;
 
   return (
@@ -109,9 +129,20 @@ export const NotificationBell: React.FC = () => {
                   variant="ghost"
                   onClick={handleMarkAllRead}
                   disabled={isLoading}
-                  className="h-6 text-[11px] px-2 text-primary hover:text-primary gap-1"
+                  className="h-6 text-[11px] px-1.5 text-primary hover:text-primary gap-1"
                 >
-                  <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                  <CheckCheck className="h-3 w-3" /> Read all
+                </Button>
+              )}
+              {notifications.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleClearAll}
+                  disabled={isLoading}
+                  className="h-6 text-[11px] px-1.5 text-destructive hover:bg-destructive/10 gap-1"
+                >
+                  <Trash2 className="h-3 w-3" /> Clear all
                 </Button>
               )}
               <button
@@ -131,45 +162,50 @@ export const NotificationBell: React.FC = () => {
               </div>
             ) : (
               notifications.map((item) => (
-                <div
+                <SwipeableItem
                   key={item.id}
-                  onClick={() => !item.read && handleMarkSingleRead(item.id)}
-                  className={`p-3 text-xs transition-colors cursor-pointer space-y-1 ${
-                    item.read
-                      ? 'bg-card hover:bg-muted/30'
-                      : 'bg-primary/5 hover:bg-primary/10'
-                  }`}
+                  onDelete={() => handleDeleteNotification(item.id)}
+                  deleteLabel="Delete"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span
-                      className={`font-semibold ${
-                        item.read ? 'text-foreground' : 'text-primary'
-                      }`}
-                    >
-                      {item.title}
-                    </span>
-                    {!item.read && (
-                      <span className="h-2 w-2 rounded-full bg-[#E85C0D] shrink-0 mt-1" />
-                    )}
-                  </div>
+                  <div
+                    onClick={() => !item.read && handleMarkSingleRead(item.id)}
+                    className={`p-3 text-xs transition-colors cursor-pointer space-y-1 ${
+                      item.read
+                        ? 'bg-card hover:bg-muted/30'
+                        : 'bg-primary/5 hover:bg-primary/10'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 pr-6">
+                      <span
+                        className={`font-semibold ${
+                          item.read ? 'text-foreground' : 'text-primary'
+                        }`}
+                      >
+                        {item.title}
+                      </span>
+                      {!item.read && (
+                        <span className="h-2 w-2 rounded-full bg-[#E85C0D] shrink-0 mt-1" />
+                      )}
+                    </div>
 
-                  <p className="text-[11px] text-muted-foreground line-clamp-2">
-                    {item.message}
-                  </p>
+                    <p className="text-[11px] text-muted-foreground line-clamp-2">
+                      {item.message}
+                    </p>
 
-                  <div className="flex items-center justify-between pt-0.5 text-[10px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-2.5 w-2.5" />
-                      {new Date(item.created_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    <span className="uppercase text-[9px] font-semibold tracking-wider text-muted-foreground/80">
-                      {item.type.replace('_', ' ')}
-                    </span>
+                    <div className="flex items-center justify-between pt-0.5 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-2.5 w-2.5" />
+                        {new Date(item.created_at).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      <span className="uppercase text-[9px] font-semibold tracking-wider text-muted-foreground/80">
+                        {item.type.replace('_', ' ')}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                </SwipeableItem>
               ))
             )}
           </div>

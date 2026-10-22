@@ -23,7 +23,9 @@ import {
   CheckCircle,
   ExternalLink,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
+import { SwipeableItem } from '@/components/ui/SwipeableItem';
 
 export type RideFilterCategory = 'all' | 'active' | 'drafts' | 'past';
 
@@ -120,6 +122,26 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
       handleRideUpdated(updated);
     } catch (err) {
       console.error('Complete error:', err);
+    }
+  };
+
+  const handleDismissRide = async (rideId: string) => {
+    if (!user) return;
+    setRides((prev) => prev.filter((r) => r.id !== rideId));
+    try {
+      await rideService.dismissRide(user.id, rideId);
+    } catch (err) {
+      console.error('Dismiss ride error:', err);
+    }
+  };
+
+  const handleClearInactive = async () => {
+    if (!user) return;
+    setRides((prev) => prev.filter((r) => ['PUBLISHED', 'CONFIRMED', 'ACTIVE', 'DRAFT'].includes(r.status)));
+    try {
+      await rideService.clearInactiveRides(user.id);
+    } catch (err) {
+      console.error('Clear inactive rides error:', err);
     }
   };
 
@@ -223,6 +245,18 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
             </div>
 
             <div className="flex items-center gap-2">
+              {rides.some((r) => ['COMPLETED', 'CANCELLED', 'EXPIRED'].includes(r.status)) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearInactive}
+                  className="gap-1.5 text-xs text-muted-foreground hover:text-destructive"
+                  title="Remove inactive rides from list (auto-deletes from database after 2 days)"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Clear Past
+                </Button>
+              )}
+
               <Button
                 variant="outline"
                 size="sm"
@@ -333,37 +367,55 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
                 );
 
                 return (
-                  <div
+                  <SwipeableItem
                     key={ride.id}
-                    onClick={() => {
-                      setSelectedRide(ride);
-                      setIsModalOpen(true);
-                    }}
-                    className="group relative cursor-pointer rounded-xl border border-border/80 bg-card p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-md space-y-3.5"
+                    onDelete={() => handleDismissRide(ride.id)}
+                    deleteLabel="Dismiss"
                   >
-                    {/* TOP BAR: STATUS + TIME + PENDING ALERTS */}
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={statusMeta.badgeVariant}>
-                          {statusMeta.label}
-                        </Badge>
-                        {isActive && (
-                          <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-                        )}
-                        {pendingRequests.length > 0 && (
-                          <Badge
-                            variant="warning"
-                            className="text-[10px] font-bold bg-[#E85C0D]/15 text-[#E85C0D] border-[#E85C0D]/30 flex items-center gap-1 animate-pulse"
-                          >
-                            <AlertCircle className="h-3 w-3" />
-                            {pendingRequests.length} Pending Request{pendingRequests.length > 1 ? 's' : ''}
+                    <div
+                      onClick={() => {
+                        setSelectedRide(ride);
+                        setIsModalOpen(true);
+                      }}
+                      className="group relative cursor-pointer rounded-xl border border-border/80 bg-card p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-md space-y-3.5"
+                    >
+                      {/* TOP BAR: STATUS + TIME + PENDING ALERTS */}
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={statusMeta.badgeVariant}>
+                            {statusMeta.label}
                           </Badge>
-                        )}
+                          {isActive && (
+                            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                          )}
+                          {pendingRequests.length > 0 && (
+                            <Badge
+                              variant="warning"
+                              className="text-[10px] font-bold bg-[#E85C0D]/15 text-[#E85C0D] border-[#E85C0D]/30 flex items-center gap-1 animate-pulse"
+                            >
+                              <AlertCircle className="h-3 w-3" />
+                              {pendingRequests.length} Pending Request{pendingRequests.length > 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Calendar className="h-3 w-3" /> {ride.departure_date} &bull; <Clock className="h-3 w-3" /> {ride.departure_time}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDismissRide(ride.id);
+                            }}
+                            title="Dismiss ride (auto-deletes in 2 days)"
+                            aria-label="Dismiss ride"
+                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Calendar className="h-3 w-3" /> {ride.departure_date} &bull; <Clock className="h-3 w-3" /> {ride.departure_time}
-                      </span>
-                    </div>
 
                     {/* CORRIDOR */}
                     <div className="space-y-1">
@@ -526,7 +578,8 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
                       </div>
                     </div>
                   </div>
-                );
+                </SwipeableItem>
+              );
               })}
             </div>
           )}

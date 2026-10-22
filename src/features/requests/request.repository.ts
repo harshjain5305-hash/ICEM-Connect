@@ -292,12 +292,16 @@ export const requestRepository = {
     const isLive = isSupabaseConfigured();
     const liveResults: JoinRequest[] = [];
 
+    // Trigger auto-purge of join requests soft-deleted > 2 days ago
+    await this.purgeExpiredDismissedRequests();
+
     if (isLive && isValidUuid(studentId)) {
       try {
         const { data, error } = await supabase
           .from('ride_join_requests')
           .select('*')
           .eq('student_id', studentId)
+          .is('deleted_at', null)
           .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
@@ -312,9 +316,9 @@ export const requestRepository = {
       }
     }
 
-    // Always merge with local storage requests
+    // Always merge with local storage requests (excluding dismissed ones)
     const localRequests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
-    const localList = Object.values(localRequests).filter((r) => r.student_id === studentId);
+    const localList = Object.values(localRequests).filter((r) => r.student_id === studentId && !r.deleted_at);
 
     const combinedMap = new Map<string, JoinRequest>();
     for (const r of liveResults) {
@@ -332,6 +336,66 @@ export const requestRepository = {
     return Array.from(combinedMap.values()).sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
+  },
+
+  /**
+   * Soft-deletes / dismisses a join request from the passenger's UI.
+   * Sets deleted_at = now(). The booking is immediately hidden from the UI
+   * and auto-deleted from the database after 2 days (48 hours).
+   */
+  async dismissRequest(studentId: string, requestId: string): Promise<void> {
+    const nowIso = new Date().toISOString();
+    const isLive = isSupabaseConfigured();
+
+    if (isLive && isValidUuid(requestId)) {
+      try {
+        await supabase
+          .from('ride_join_requests')
+          .update({ deleted_at: nowIso })
+          .eq('id', requestId)
+          .eq('student_id', studentId);
+      } catch (err) {
+        console.warn('Live dismissRequest error:', err);
+      }
+    }
+
+    const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
+    if (requests[requestId] && requests[requestId].student_id === studentId) {
+      requests[requestId].deleted_at = nowIso;
+      saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+    }
+  },
+
+  /**
+   * Permanently purges join requests from storage/database that were soft-deleted > 2 days ago.
+   */
+  async purgeExpiredDismissedRequests(): Promise<void> {
+    const isLive = isSupabaseConfigured();
+    const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    if (isLive) {
+      try {
+        await supabase.rpc('cleanup_dismissed_rides_and_requests');
+      } catch {
+        // Handled defensively
+      }
+    }
+
+    const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
+    let changed = false;
+    for (const [id, req] of Object.entries(requests)) {
+      if (req.deleted_at) {
+        const deletedTime = new Date(req.deleted_at).getTime();
+        if (now - deletedTime >= twoDaysMs) {
+          delete requests[id];
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+    }
   },
 
   async listParticipantsByRide(rideId: string): Promise<RideParticipant[]> {

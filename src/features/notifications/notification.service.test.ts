@@ -63,4 +63,50 @@ describe('Notification Service (Phase 6)', () => {
     const unreadCount = await notificationService.getUnreadCount(userId);
     expect(unreadCount).toBe(0);
   });
+
+  it('immediately deletes a single notification (database & storage)', async () => {
+    const n1 = await notificationService.notify({
+      user_id: userId,
+      title: 'Dismiss Me',
+      message: 'Slide or click delete',
+    });
+    const n2 = await notificationService.notify({
+      user_id: userId,
+      title: 'Keep Me',
+      message: 'Stay active',
+    });
+
+    let list = await notificationService.getUserNotifications(userId);
+    expect(list.length).toBe(2);
+
+    await notificationService.deleteNotification(n1.id);
+
+    list = await notificationService.getUserNotifications(userId);
+    expect(list.length).toBe(1);
+    expect(list[0].id).toBe(n2.id);
+  });
+
+  it('immediately clears all notifications for a user', async () => {
+    await notificationService.notify({
+      user_id: userId,
+      title: 'Notif 1',
+      message: 'One',
+    });
+    await notificationService.notify({
+      user_id: userId,
+      title: 'Notif 2',
+      message: 'Two',
+    });
+
+    let list = await notificationService.getUserNotifications(userId);
+    expect(list.length).toBe(2);
+
+    await notificationService.clearAll(userId);
+
+    list = await notificationService.getUserNotifications(userId);
+    expect(list.length).toBe(0);
+
+    const unread = await notificationService.getUnreadCount(userId);
+    expect(unread).toBe(0);
+  });
 });

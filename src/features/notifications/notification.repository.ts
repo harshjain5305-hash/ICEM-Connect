@@ -156,4 +156,54 @@ export const notificationRepository = {
     }
     saveLocalData(LOCAL_STORAGE_NOTIFS_KEY, store);
   },
+
+  async deleteNotification(notificationId: string): Promise<void> {
+    const isLive = isSupabaseConfigured();
+
+    if (isLive && isValidUuid(notificationId)) {
+      try {
+        await supabase
+          .from('notifications')
+          .delete()
+          .eq('id', notificationId);
+      } catch (err) {
+        console.warn('Live notification delete error:', err);
+      }
+    }
+
+    const store = getLocalData<AppNotification>(LOCAL_STORAGE_NOTIFS_KEY);
+    if (store[notificationId]) {
+      delete store[notificationId];
+      saveLocalData(LOCAL_STORAGE_NOTIFS_KEY, store);
+    }
+  },
+
+  async clearAllNotifications(userId: string): Promise<void> {
+    const isLive = isSupabaseConfigured();
+
+    if (isLive && isValidUuid(userId)) {
+      try {
+        // Use RPC if available or direct delete query
+        const { error } = await supabase.rpc('clear_user_notifications', {
+          p_user_id: userId,
+        });
+        if (error) {
+          await supabase
+            .from('notifications')
+            .delete()
+            .eq('user_id', userId);
+        }
+      } catch (err) {
+        console.warn('Live notification clearAll error:', err);
+      }
+    }
+
+    const store = getLocalData<AppNotification>(LOCAL_STORAGE_NOTIFS_KEY);
+    for (const id of Object.keys(store)) {
+      if (store[id].user_id === userId) {
+        delete store[id];
+      }
+    }
+    saveLocalData(LOCAL_STORAGE_NOTIFS_KEY, store);
+  },
 };
