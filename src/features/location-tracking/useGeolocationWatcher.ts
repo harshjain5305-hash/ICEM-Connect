@@ -14,6 +14,8 @@ export interface UseGeolocationWatcherOptions {
   enabled?: boolean;
 }
 
+export type GpsPermissionState = 'prompt' | 'granted' | 'denied' | 'unsupported';
+
 export function useGeolocationWatcher({
   rideId,
   hostId,
@@ -24,8 +26,32 @@ export function useGeolocationWatcher({
   const [currentLocation, setCurrentLocation] = useState<LiveLocationUpdate | null>(null);
   const [freshness, setFreshness] = useState<LocationFreshness>('LOST');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [permissionState, setPermissionState] = useState<GpsPermissionState>('prompt');
+  const [isGpsTurnedOff, setIsGpsTurnedOff] = useState<boolean>(false);
 
   const watchIdRef = useRef<number | null>(null);
+
+  // Check browser permission state if supported
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setPermissionState('unsupported');
+      return;
+    }
+
+    if (navigator.permissions && typeof navigator.permissions.query === 'function') {
+      navigator.permissions
+        .query({ name: 'geolocation' as PermissionName })
+        .then((perm) => {
+          setPermissionState(perm.state as GpsPermissionState);
+          perm.onchange = () => {
+            setPermissionState(perm.state as GpsPermissionState);
+          };
+        })
+        .catch(() => {
+          // Permissions API query not supported or rejected
+        });
+    }
+  }, []);
 
   const stopWatching = useCallback(() => {
     if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
@@ -39,12 +65,14 @@ export function useGeolocationWatcher({
   const startWatching = useCallback(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setStatus('UNAVAILABLE');
+      setPermissionState('unsupported');
       setErrorMessage('Geolocation is not supported by your browser environment.');
       return;
     }
 
     setStatus('REQUESTING_PERMISSION');
     setErrorMessage(null);
+    setIsGpsTurnedOff(false);
 
     liveLocationService.startLocationSharing(hostId, rideId).catch(() => {});
 
@@ -52,6 +80,10 @@ export function useGeolocationWatcher({
       const id = navigator.geolocation.watchPosition(
         async (pos) => {
           setStatus('ACTIVE');
+          setPermissionState('granted');
+          setIsGpsTurnedOff(false);
+          setErrorMessage(null);
+
           const update: LiveLocationUpdate = {
             ride_id: rideId,
             latitude: pos.coords.latitude,
@@ -77,10 +109,12 @@ export function useGeolocationWatcher({
         (error: GeolocationPositionError) => {
           if (error.code === error.PERMISSION_DENIED) {
             setStatus('PERMISSION_DENIED');
+            setPermissionState('denied');
             setErrorMessage('Location permission denied. Live map will be unavailable.');
           } else if (error.code === error.POSITION_UNAVAILABLE) {
             setStatus('UNAVAILABLE');
-            setErrorMessage('GPS position unavailable. Please check device location settings.');
+            setIsGpsTurnedOff(true);
+            setErrorMessage('Device GPS hardware appears to be turned off. Please check device location settings.');
           } else {
             setStatus('ERROR');
             setErrorMessage(error.message || 'Error acquiring location signal.');
@@ -99,6 +133,33 @@ export function useGeolocationWatcher({
       setErrorMessage(err instanceof Error ? err.message : 'Failed to initialize geolocation watcher');
     }
   }, [hostId, rideId]);
+
+  const requestPermission = useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setErrorMessage('Geolocation is not supported by your browser environment.');
+      return;
+    }
+    setErrorMessage(null);
+    setStatus('REQUESTING_PERMISSION');
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        setPermissionState('granted');
+        startWatching();
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setPermissionState('denied');
+          setStatus('PERMISSION_DENIED');
+          setErrorMessage('Location permission denied. Please allow location in your browser settings.');
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setIsGpsTurnedOff(true);
+          setStatus('UNAVAILABLE');
+          setErrorMessage('Device GPS is off. Please enable Location in your device settings.');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }, [startWatching]);
 
   // Manage watch lifecycle based on active state
   useEffect(() => {
@@ -132,6 +193,10 @@ export function useGeolocationWatcher({
     currentLocation,
     freshness,
     errorMessage,
+    permissionState,
+    isGpsTurnedOff,
+    requestPermission,
+    retryLocation: startWatching,
     startWatching,
     stopWatching,
   };

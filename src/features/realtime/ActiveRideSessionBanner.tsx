@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useRideRoom } from './useRideRoom';
 import { useGeolocationWatcher } from '@/features/location-tracking/useGeolocationWatcher';
 import { LiveRideTrackingMap } from '@/features/location-tracking/LiveRideTrackingMap';
+import { RiderGpsStatusCard } from '@/features/location-tracking/RiderGpsStatusCard';
 import { RideCoordinationChat } from '@/features/rides/RideCoordinationChat';
 import type { LiveLocationUpdate } from '@/features/location-tracking/location.types';
 import type { Ride } from '@/features/rides/ride.types';
@@ -67,6 +68,11 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
   const {
     currentLocation: hostGeoLocation,
     status: geoStatus,
+    freshness: geoFreshness,
+    permissionState: geoPermissionState,
+    isGpsTurnedOff,
+    requestPermission: requestGpsPermission,
+    retryLocation: retryGpsLocation,
   } = useGeolocationWatcher({
     rideId: ride.id,
     hostId: currentUser?.id || '',
@@ -268,11 +274,20 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
         </div>
       </div>
 
-      {/* Geolocation Permission Denial Warning (Phases.md §13) */}
-      {geoStatus === 'PERMISSION_DENIED' && isHost && (
-        <div className="mt-2.5 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-          <span>Location permission denied by browser. Ride continues without live tracking.</span>
+      {/* Rider GPS Permission & Hardware Status (Host Only) */}
+      {isHost && (
+        <div className="mt-3">
+          <RiderGpsStatusCard
+            status={geoStatus}
+            freshness={geoFreshness}
+            permissionState={geoPermissionState}
+            isGpsTurnedOff={isGpsTurnedOff}
+            errorMessage={null}
+            currentLocation={hostGeoLocation}
+            onRequestPermission={requestGpsPermission}
+            onRetry={retryGpsLocation}
+            isTripActive={isRideActive}
+          />
         </div>
       )}
 
