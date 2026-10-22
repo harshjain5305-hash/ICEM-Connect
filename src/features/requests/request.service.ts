@@ -23,7 +23,104 @@ export class RequestServiceError extends Error {
   }
 }
 
+/**
+ * Calculates absolute difference in minutes between two ride departure date/times.
+ * Returns null if dates or times cannot be parsed.
+ */
+export function getMinutesBetweenRides(
+  date1: string,
+  time1: string,
+  date2: string,
+  time2: string
+): number | null {
+  try {
+    const timeParts1 = time1.trim().split(':');
+    const timeParts2 = time2.trim().split(':');
+    if (timeParts1.length < 2 || timeParts2.length < 2) return null;
+
+    const [y1, m1, d1] = date1.split('-').map(Number);
+    const [y2, m2, d2] = date2.split('-').map(Number);
+    if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return null;
+
+    const dt1 = new Date(y1, m1 - 1, d1, Number(timeParts1[0]), Number(timeParts1[1]), 0);
+    const dt2 = new Date(y2, m2 - 1, d2, Number(timeParts2[0]), Number(timeParts2[1]), 0);
+
+    const diffMs = Math.abs(dt1.getTime() - dt2.getTime());
+    return diffMs / (60 * 1000);
+  } catch {
+    return null;
+  }
+}
+
 export const requestService = {
+  /**
+   * Checks whether the student has any confirmed trip (as confirmed passenger or host)
+   * within ±45 minutes of the target departure date and time (Rules.md §13).
+   */
+  async checkTemporalConflict(
+    studentId: string,
+    departureDate: string,
+    departureTime: string,
+    excludeRideId?: string
+  ): Promise<{ hasConflict: boolean; message?: string }> {
+    if (!studentId || !departureDate || !departureTime) {
+      return { hasConflict: false };
+    }
+
+    // 1. Check passenger confirmed trips (accepted join requests on active rides)
+    const requests = await requestRepository.listRequestsByStudent(studentId);
+    for (const req of requests) {
+      if (req.status === 'ACCEPTED' && req.ride_id !== excludeRideId) {
+        const confirmedRide = req.ride || (await rideRepository.getRideById(req.ride_id));
+        if (
+          confirmedRide &&
+          ['PUBLISHED', 'CONFIRMED', 'ACTIVE'].includes(confirmedRide.status) &&
+          confirmedRide.departure_date &&
+          confirmedRide.departure_time
+        ) {
+          const diffMinutes = getMinutesBetweenRides(
+            departureDate,
+            departureTime,
+            confirmedRide.departure_date,
+            confirmedRide.departure_time
+          );
+          if (diffMinutes !== null && diffMinutes <= 45) {
+            return {
+              hasConflict: true,
+              message: `Cannot request ride: You already have a confirmed trip scheduled at ${confirmedRide.departure_time} on ${confirmedRide.departure_date} (within 45 minutes of ${departureTime}) (Rules.md §13)`,
+            };
+          }
+        }
+      }
+    }
+
+    // 2. Check host scheduled trips (rides being hosted by this student)
+    const hostedRides = await rideRepository.listRidesByHost(studentId);
+    for (const hostedRide of hostedRides) {
+      if (
+        hostedRide.id !== excludeRideId &&
+        ['PUBLISHED', 'CONFIRMED', 'ACTIVE'].includes(hostedRide.status) &&
+        hostedRide.departure_date &&
+        hostedRide.departure_time
+      ) {
+        const diffMinutes = getMinutesBetweenRides(
+          departureDate,
+          departureTime,
+          hostedRide.departure_date,
+          hostedRide.departure_time
+        );
+        if (diffMinutes !== null && diffMinutes <= 45) {
+          return {
+            hasConflict: true,
+            message: `Cannot request ride: You are already hosting a scheduled trip at ${hostedRide.departure_time} on ${hostedRide.departure_date} (within 45 minutes of ${departureTime}) (Rules.md §13)`,
+          };
+        }
+      }
+    }
+
+    return { hasConflict: false };
+  },
+
   /**
    * Submits a new join request for a ride.
    */
@@ -51,6 +148,20 @@ export const requestService = {
         throw new RequestServiceError(
           'BLOCKED_INTERACTION',
           'Cannot request a ride with this user due to account blocking'
+        );
+      }
+
+      // Check cross-ride temporal conflict within ±45 minutes (Rules.md §13)
+      const conflict = await this.checkTemporalConflict(
+        studentId,
+        ride.departure_date,
+        ride.departure_time,
+        ride.id
+      );
+      if (conflict.hasConflict) {
+        throw new RequestServiceError(
+          'SCHEDULE_CONFLICT',
+          conflict.message || 'Schedule conflict: Overlapping trip within 45 minutes (Rules.md §13)'
         );
       }
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { requestService } from './request.service';
+import { requestService, getMinutesBetweenRides } from './request.service';
 import { rideService } from '@/features/rides/ride.service';
 import { notificationService } from '@/features/notifications/notification.service';
 import { moderationService } from '@/features/moderation/moderation.service';
@@ -223,5 +223,127 @@ describe('Join Request Service & Transactional Capacity (Phase 6)', () => {
         seat_count: 1,
       })
     ).rejects.toThrow(/blocking/i);
+  });
+
+  describe('Cross-Ride Temporal Conflict Check (Rules.md §13)', () => {
+    it('calculates absolute minutes between ride departure date/times accurately', () => {
+      expect(getMinutesBetweenRides('2026-10-26', '17:30', '2026-10-26', '17:30')).toBe(0);
+      expect(getMinutesBetweenRides('2026-10-26', '17:30', '2026-10-26', '18:15')).toBe(45);
+      expect(getMinutesBetweenRides('2026-10-26', '17:30', '2026-10-26', '16:45')).toBe(45);
+      expect(getMinutesBetweenRides('2026-10-26', '17:30', '2026-10-26', '18:16')).toBe(46);
+      expect(getMinutesBetweenRides('2026-10-26', '17:30:00', '2026-10-26', '18:00:00')).toBe(30);
+      // Day crossover
+      expect(getMinutesBetweenRides('2026-10-26', '23:45', '2026-10-27', '00:15')).toBe(30);
+      // Malformed inputs
+      expect(getMinutesBetweenRides('invalid', '17:30', '2026-10-26', '18:00')).toBeNull();
+    });
+
+    it('disallows requesting another trip if passenger already has a confirmed ride within ±45 minutes', async () => {
+      // 1. Passenger1 requests and is accepted on Ride 1 (departure 17:30)
+      const req1 = await requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+      });
+      await requestService.acceptRequest(hostId, req1.id);
+
+      // 2. Create Ride 2 (same date, departure 18:00 -> 30 mins difference <= 45 mins)
+      const host2Id = 'student_host_2';
+      const ride2 = await rideService.createRide(host2Id, {
+        origin_location_id: 'loc_bhosari_stand',
+        destination_location_id: 'loc_pimpri_chowk',
+        departure_date: '2026-10-26',
+        departure_time: '18:00',
+        total_seats: 2,
+        vehicle_type: 'SCOOTER',
+      });
+
+      // 3. Passenger1 attempts to request Ride 2 -> must be rejected with SCHEDULE_CONFLICT
+      await expect(
+        requestService.createRequest(passenger1, {
+          ride_id: ride2.id,
+          seat_count: 1,
+        })
+      ).rejects.toThrow(/already have a confirmed trip scheduled.*45 minutes/i);
+    });
+
+    it('allows requesting another trip if the existing accepted ride is > 45 minutes apart', async () => {
+      // 1. Passenger1 is accepted on Ride 1 (departure 17:30)
+      const req1 = await requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+      });
+      await requestService.acceptRequest(hostId, req1.id);
+
+      // 2. Create Ride 3 (same date, departure 19:00 -> 90 mins difference > 45 mins)
+      const host2Id = 'student_host_2';
+      const ride3 = await rideService.createRide(host2Id, {
+        origin_location_id: 'loc_bhosari_stand',
+        destination_location_id: 'loc_pimpri_chowk',
+        departure_date: '2026-10-26',
+        departure_time: '19:00',
+        total_seats: 2,
+        vehicle_type: 'SCOOTER',
+      });
+
+      // 3. Passenger1 requests Ride 3 -> succeeds!
+      const req3 = await requestService.createRequest(passenger1, {
+        ride_id: ride3.id,
+        seat_count: 1,
+      });
+      expect(req3).toBeDefined();
+      expect(req3.status).toBe('PENDING');
+    });
+
+    it('allows requesting another trip if the confirmed ride on that time was cancelled', async () => {
+      // 1. Passenger1 is accepted on Ride 1 (departure 17:30)
+      const req1 = await requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+      });
+      await requestService.acceptRequest(hostId, req1.id);
+
+      // 2. Passenger cancels their seat on Ride 1
+      await requestService.cancelRequest(passenger1, req1.id);
+
+      // 3. Create Ride 2 at 17:45 (15 mins diff)
+      const host2Id = 'student_host_2';
+      const ride2 = await rideService.createRide(host2Id, {
+        origin_location_id: 'loc_bhosari_stand',
+        destination_location_id: 'loc_pimpri_chowk',
+        departure_date: '2026-10-26',
+        departure_time: '17:45',
+        total_seats: 2,
+        vehicle_type: 'SCOOTER',
+      });
+
+      // 4. Passenger1 can now request Ride 2 without conflict
+      const req2 = await requestService.createRequest(passenger1, {
+        ride_id: ride2.id,
+        seat_count: 1,
+      });
+      expect(req2.status).toBe('PENDING');
+    });
+
+    it('disallows requesting another trip if student is already hosting a ride within ±45 minutes', async () => {
+      // Host1 is hosting testRideId departing at 17:30.
+      // Another host creates a ride at 17:45 (15 mins away)
+      const host2Id = 'student_host_2';
+      const ride2 = await rideService.createRide(host2Id, {
+        origin_location_id: 'loc_bhosari_stand',
+        destination_location_id: 'loc_pimpri_chowk',
+        departure_date: '2026-10-26',
+        departure_time: '17:45',
+        total_seats: 2,
+        vehicle_type: 'SCOOTER',
+      });
+
+      // Host1 attempts to request a seat on Ride 2 -> blocked because Host1 is driving their own ride at 17:30!
+      await expect(
+        requestService.createRequest(hostId, {
+          ride_id: ride2.id,
+          seat_count: 1,
+        })
+      ).rejects.toThrow(/already hosting a scheduled trip/i);
+    });
   });
 });
