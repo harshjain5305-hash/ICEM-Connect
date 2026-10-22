@@ -1208,6 +1208,23 @@ These are documented requirements only. They must not be treated as implemented 
 
 ## Changelog
 
+### 2026-10-22 — RideDetailModal Ergonomic Navigation & Rider GPS Diagnostics Implemented & Verified
+
+State:
+- Refactored [`src/features/rides/RideDetailModal.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/RideDetailModal.tsx):
+  - Solved excessive vertical scrolling by dividing the modal into 5 dedicated views: `Overview`, `Waypoints`, `Live Map`, `Chat`, and `Requests` (for host).
+  - Added header quick-jump shortcut icons (`Milestone` for Waypoints, `Radio` with active green pulse for Live Traveling Map, `MessageSquare` for Chat) to allow 1-click jumps from any view.
+  - Added sticky segmented navigation pill bar with responsive mobile-friendly tap targets ($\ge 44\text{px}$).
+- Created [`src/features/location-tracking/RiderGpsStatusCard.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/RiderGpsStatusCard.tsx):
+  - Proactive GPS hardware and browser permission diagnostics for the host/rider.
+  - Real-time broadcasting telemetry (accuracy $\pm X\text{m}$, speed $Y\text{km/h}$, freshness badge).
+  - Clear guidance and retry buttons when browser location permission is denied or when device GPS is switched off.
+- Enhanced [`src/features/location-tracking/useGeolocationWatcher.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/useGeolocationWatcher.ts) with `navigator.permissions` check, `isGpsTurnedOff` flag, `requestPermission()`, and `retryLocation()`.
+- Added unit & integration tests in [`src/features/rides/RideDetailModal.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/RideDetailModal.test.tsx) (8 tests).
+- Verified test suite: **213/213 tests passing across 34 test suites** (`npm test`).
+- Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+- Verified production build: **clean bundle generated in 6.17s** (`npm run build`).
+
 ### 2026-10-22 — Rules.md §13 Conflicting Cross-Ride Temporal Check Implemented & Verified
 
 State:
