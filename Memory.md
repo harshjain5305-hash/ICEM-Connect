@@ -1208,6 +1208,20 @@ These are documented requirements only. They must not be treated as implemented 
 
 ## Changelog
 
+### 2026-10-22 — Rules.md §13 Conflicting Cross-Ride Temporal Check Implemented & Verified
+
+State:
+- Implemented `checkTemporalConflict()` and `getMinutesBetweenRides()` in `src/features/requests/request.service.ts`:
+  - Enforces `Rules.md §13`: Detects obvious schedule conflicts when a student attempts to confirm or request overlapping rides that cannot coexist.
+  - Automatically inspects the requester's accepted trips (`status === 'ACCEPTED'`) on active rides and scheduled rides hosted by the user.
+  - Disallows requesting another trip within $\pm 45$ minutes of an existing confirmed departure time, raising `RequestServiceError('SCHEDULE_CONFLICT', ...)`.
+  - Safely ignores rides that are cancelled, expired, or completed, or requests that have been cancelled.
+- Expanded `src/features/requests/request.service.test.ts`:
+  - Added 5 comprehensive unit tests verifying absolute minute calculation, day-crossover boundaries, 45-minute rejection threshold, >45-minute acceptance, cancelled ride recovery, and host-as-requester conflicts.
+- Verified test suite: **205/205 tests passing across 33 test suites**.
+- Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+- Verified production build: **clean bundle generated in 27.84s** (`npm run build`).
+
 ### 2026-10-22 — Phase 10 — MVP Integration & Hardening Implemented & Verified
 
 State:
