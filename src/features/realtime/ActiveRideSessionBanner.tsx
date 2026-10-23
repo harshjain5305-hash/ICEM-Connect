@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
-import { Radio, Users, AlertTriangle, Play, Square, RefreshCw, Map, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Radio,
+  Users,
+  AlertTriangle,
+  Play,
+  Square,
+  RefreshCw,
+  Map,
+  ChevronDown,
+  ChevronUp,
+  MessageSquare,
+  FastForward,
+} from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useRideRoom } from './useRideRoom';
@@ -7,6 +19,8 @@ import { useGeolocationWatcher } from '@/features/location-tracking/useGeolocati
 import { LiveRideTrackingMap } from '@/features/location-tracking/LiveRideTrackingMap';
 import { RiderGpsStatusCard } from '@/features/location-tracking/RiderGpsStatusCard';
 import { RideCoordinationChat } from '@/features/rides/RideCoordinationChat';
+import { liveLocationService } from '@/features/location-tracking/liveLocation.service';
+import { decodePolyline, calculateBearing } from '@/features/routes/polyline.utils';
 import type { LiveLocationUpdate } from '@/features/location-tracking/location.types';
 import type { Ride } from '@/features/rides/ride.types';
 import type { StudentProfile } from '@/features/auth/auth.types';
@@ -28,6 +42,9 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
   const [liveLocation, setLiveLocation] = useState<LiveLocationUpdate | null>(null);
   const [showLiveMap, setShowLiveMap] = useState<boolean>(true);
   const [showChat, setShowChat] = useState<boolean>(false);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const simIndexRef = useRef<number>(0);
+  const simTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const {
     connectionState,
@@ -61,8 +78,37 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
   });
 
   const [confirmComplete, setConfirmComplete] = useState(false);
-
   const isRideActive = ride.status === 'ACTIVE' || activeSession?.status === 'ACTIVE';
+
+  // PASSENGER INITIAL HYDRATION & ACTIVE POLL
+  useEffect(() => {
+    if (isHost || !ride.id || !currentUser) return;
+
+    let isMounted = true;
+    const fetchLatest = async () => {
+      try {
+        const latest = await liveLocationService.getLatestLocation(ride.id, currentUser.id);
+        if (latest && isMounted) {
+          setLiveLocation(latest);
+        }
+      } catch {
+        // Handled silently
+      }
+    };
+
+    fetchLatest();
+
+    // Fallback polling for live tracking when ride is in progress
+    let interval: NodeJS.Timeout | null = null;
+    if (isRideActive) {
+      interval = setInterval(fetchLatest, 3500);
+    }
+
+    return () => {
+      isMounted = false;
+      if (interval) clearInterval(interval);
+    };
+  }, [ride.id, currentUser, isHost, isRideActive]);
 
   // Host GPS location watcher
   const {
@@ -76,11 +122,85 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
   } = useGeolocationWatcher({
     rideId: ride.id,
     hostId: currentUser?.id || '',
-    isActive: isRideActive && isHost,
-    enabled: isHost,
+    isActive: isRideActive && isHost && !isSimulating,
+    enabled: isHost && !isSimulating,
   });
 
-  const effectiveLocation = isHost ? hostGeoLocation : liveLocation;
+  // Effective location: If simulating, use simulated location state; otherwise host geo or passenger realtime
+  const effectiveLocation = isHost ? (isSimulating ? liveLocation : hostGeoLocation) : liveLocation;
+
+  // ROUTE DRIVE SIMULATION TOOL (Allows desk testing without driving)
+  const routeCoordinates: [number, number][] = React.useMemo(() => {
+    if (ride.route?.encoded_polyline) {
+      return decodePolyline(ride.route.encoded_polyline);
+    }
+    if (ride.route?.geometry_json && 'coordinates' in ride.route.geometry_json) {
+      const geoCoords = ride.route.geometry_json.coordinates as [number, number][];
+      return geoCoords.map(([lng, lat]) => [lat, lng]);
+    }
+    const pts: [number, number][] = [];
+    if (ride.origin) pts.push([ride.origin.latitude, ride.origin.longitude]);
+    if (ride.waypoints) {
+      for (const wp of ride.waypoints) pts.push([wp.latitude, wp.longitude]);
+    }
+    if (ride.destination) pts.push([ride.destination.latitude, ride.destination.longitude]);
+    return pts;
+  }, [ride]);
+
+  const stopSimulation = useCallback(() => {
+    if (simTimerRef.current) {
+      clearInterval(simTimerRef.current);
+      simTimerRef.current = null;
+    }
+    setIsSimulating(false);
+  }, []);
+
+  const startSimulation = useCallback(() => {
+    if (!currentUser || routeCoordinates.length < 2) return;
+    stopSimulation();
+    setIsSimulating(true);
+    simIndexRef.current = 0;
+
+    const step = async () => {
+      if (simIndexRef.current >= routeCoordinates.length) {
+        stopSimulation();
+        return;
+      }
+
+      const idx = simIndexRef.current;
+      const curr = routeCoordinates[idx];
+      const next = routeCoordinates[Math.min(idx + 1, routeCoordinates.length - 1)];
+
+      const heading = calculateBearing(curr[0], curr[1], next[0], next[1]);
+      const update: LiveLocationUpdate = {
+        ride_id: ride.id,
+        latitude: curr[0],
+        longitude: curr[1],
+        accuracy: 8,
+        heading: Math.round(heading),
+        speed: 36, // km/h
+        timestamp: new Date().toISOString(),
+      };
+
+      setLiveLocation(update);
+      try {
+        await liveLocationService.publishLocation(currentUser.id, update, true);
+      } catch (err) {
+        console.warn('Simulation publish error:', err);
+      }
+
+      simIndexRef.current += 1;
+    };
+
+    step();
+    simTimerRef.current = setInterval(step, 1300);
+  }, [currentUser, routeCoordinates, ride.id, stopSimulation]);
+
+  useEffect(() => {
+    return () => {
+      if (simTimerRef.current) clearInterval(simTimerRef.current);
+    };
+  }, []);
 
   const handleStart = async () => {
     try {
@@ -93,6 +213,7 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
 
   const handleComplete = async () => {
     try {
+      stopSimulation();
       await endSession();
       setConfirmComplete(false);
       onStatusChanged?.('COMPLETED');
@@ -101,12 +222,24 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
     }
   };
 
+  const handleManualRefresh = async () => {
+    if (!ride.id || !currentUser) return;
+    try {
+      const latest = await liveLocationService.getLatestLocation(ride.id, currentUser.id);
+      if (latest) {
+        setLiveLocation(latest);
+      }
+    } catch (err) {
+      console.warn('Manual refresh error:', err);
+    }
+  };
+
   // Status indicator config
   const connectionBadge = (() => {
     switch (connectionState) {
       case 'CONNECTED':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             Live Room Connected
           </span>
@@ -114,21 +247,21 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
       case 'CONNECTING':
       case 'RECONNECTING':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
             <RefreshCw className="w-3 h-3 animate-spin text-amber-600" />
             Connecting to Realtime...
           </span>
         );
       case 'ERROR':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800">
             <AlertTriangle className="w-3 h-3 text-red-600" />
             Connection Alert
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-400">
             <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
             Room Inactive
           </span>
@@ -136,21 +269,23 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
     }
   })();
 
+  const canCoordinateChat = currentUser && (isRideActive || ['PUBLISHED', 'CONFIRMED'].includes(ride.status));
+
   return (
     <div
       className={`rounded-xl border p-4 mb-4 transition-all duration-300 ${
         isRideActive
           ? 'bg-gradient-to-r from-emerald-900/10 via-teal-900/5 to-transparent border-emerald-500/40 shadow-sm'
-          : 'bg-slate-50/80 border-slate-200'
+          : 'bg-slate-50/80 border-slate-200 dark:bg-slate-900/40 dark:border-slate-800'
       }`}
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {/* Left Side: Status & Channel Room Badge */}
         <div className="space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
               <Radio className={`w-3.5 h-3.5 ${isRideActive ? 'text-emerald-600 animate-pulse' : 'text-slate-400'}`} />
-              Ride Room: <code className="font-mono text-slate-600">ride:{ride.id.slice(0, 8)}</code>
+              Ride Room: <code className="font-mono text-slate-600 dark:text-slate-400">ride:{ride.id.slice(0, 8)}</code>
             </div>
             {connectionBadge}
             {isRideActive && (
@@ -158,21 +293,27 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
                 Trip in Progress
               </Badge>
             )}
+            {isSimulating && (
+              <Badge variant="warning" className="animate-pulse bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950/60 dark:text-cyan-300">
+                Simulating Drive (36 km/h)
+              </Badge>
+            )}
           </div>
 
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             {isRideActive
               ? activeSession?.started_at
                 ? `Journey commenced at ${new Date(activeSession.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                 : 'Active trip session in progress across campus corridor'
               : ride.status === 'COMPLETED'
               ? 'This trip has safely concluded'
-              : 'Trip is scheduled. Realtime presence synchronizes participant arrivals'}
+              : 'Trip is scheduled. Coordination chat and presence are active.'}
           </p>
         </div>
 
-        {/* Right Side: Host Action Controls */}
-        <div className="flex items-center gap-2">
+        {/* Right Side: Host Action Controls & View Toggles */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Host Start & Complete Controls */}
           {isHost && (
             <>
               {['PUBLISHED', 'CONFIRMED'].includes(ride.status) && !isRideActive && (
@@ -195,14 +336,14 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
                       size="sm"
                       variant="outline"
                       onClick={() => setConfirmComplete(true)}
-                      className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:hover:bg-red-950/30"
                     >
                       <Square className="w-3.5 h-3.5 mr-1.5 fill-current" />
                       Complete Journey
                     </Button>
                   ) : (
-                    <div className="flex items-center gap-1.5 bg-red-50 p-1 rounded-lg border border-red-200">
-                      <span className="text-xs text-red-700 font-medium px-1">Arrived?</span>
+                    <div className="flex items-center gap-1.5 bg-red-50 dark:bg-red-950/40 p-1 rounded-lg border border-red-200 dark:border-red-800">
+                      <span className="text-xs text-red-700 dark:text-red-300 font-medium px-1">Arrived?</span>
                       <Button
                         size="sm"
                         variant="destructive"
@@ -222,11 +363,24 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
                       </Button>
                     </div>
                   )}
+
+                  {/* Route Drive Simulation Tool for Host Desk Testing */}
+                  <Button
+                    size="sm"
+                    variant={isSimulating ? 'secondary' : 'outline'}
+                    onClick={isSimulating ? stopSimulation : startSimulation}
+                    className="h-8 text-xs gap-1 border-cyan-500/40 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-950/30"
+                    title={isSimulating ? 'Stop travel simulation' : 'Simulate vehicle moving along route'}
+                  >
+                    <FastForward className={`w-3.5 h-3.5 ${isSimulating ? 'animate-pulse text-cyan-600' : ''}`} />
+                    <span>{isSimulating ? 'Stop Sim' : 'Simulate Drive'}</span>
+                  </Button>
                 </>
               )}
             </>
           )}
 
+          {/* Rate Host when completed */}
           {!isHost && ride.status === 'COMPLETED' && onRateHost && (
             <Button
               size="sm"
@@ -238,44 +392,56 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
             </Button>
           )}
 
-          {isRideActive && (
-            <>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowChat((prev) => !prev)}
-                className="h-8 text-xs text-primary gap-1"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>{showChat ? 'Hide Chat' : 'Trip Chat'}</span>
-              </Button>
+          {/* TRIP COORDINATION CHAT TOGGLE (Available immediately when accepted/confirmed) */}
+          {canCoordinateChat && (
+            <Button
+              size="sm"
+              variant={showChat ? 'secondary' : 'outline'}
+              onClick={() => setShowChat((prev) => !prev)}
+              className="h-8 text-xs text-primary gap-1 border-primary/30 hover:bg-primary/10"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>{showChat ? 'Hide Chat' : 'Trip Chat'}</span>
+            </Button>
+          )}
 
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowLiveMap((prev) => !prev)}
-                className="h-8 text-xs text-primary gap-1"
-              >
-                <Map className="w-3.5 h-3.5" />
-                {showLiveMap ? (
-                  <>
-                    <span>Hide Live Map</span>
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  </>
-                ) : (
-                  <>
-                    <span>View Live Map</span>
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  </>
-                )}
-              </Button>
-            </>
+          {/* LIVE MAP TOGGLE */}
+          {isRideActive && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowLiveMap((prev) => !prev)}
+              className="h-8 text-xs text-primary gap-1"
+            >
+              <Map className="w-3.5 h-3.5" />
+              {showLiveMap ? (
+                <>
+                  <span>Hide Live Map</span>
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </>
+              ) : (
+                <>
+                  <span>View Live Map</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </>
+              )}
+            </Button>
           )}
         </div>
       </div>
 
+      {/* Pre-Trip Coordination Notice when ride is not yet active */}
+      {!isRideActive && ride.status !== 'COMPLETED' && (
+        <div className="mt-2 text-[11px] text-muted-foreground flex items-center justify-between border-t border-border/40 pt-1.5">
+          <span>
+            💬 Coordination chat is open — message the host to confirm pickup point and luggage.
+          </span>
+          <span className="font-medium text-emerald-600">Pre-Trip Ready</span>
+        </div>
+      )}
+
       {/* Rider GPS Permission & Hardware Status (Host Only) */}
-      {isHost && (
+      {isHost && !isSimulating && (
         <div className="mt-3">
           <RiderGpsStatusCard
             status={geoStatus}
@@ -291,19 +457,20 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
         </div>
       )}
 
-      {/* LIVE INTERACTIVE TRACKING MAP (Phase 9) */}
+      {/* LIVE INTERACTIVE TRACKING MAP (Phase 9 & Zoom Enabled) */}
       {isRideActive && showLiveMap && (
         <div className="mt-3">
           <LiveRideTrackingMap
             ride={ride}
             liveLocation={effectiveLocation}
             isHost={isHost}
+            onRefreshLocation={handleManualRefresh}
           />
         </div>
       )}
 
-      {/* TRIP COORDINATION CHAT (Phase 10 — Architecture.md §47) */}
-      {isRideActive && showChat && currentUser && (
+      {/* TRIP COORDINATION CHAT (Available once accepted) */}
+      {showChat && currentUser && (
         <div className="mt-3">
           <RideCoordinationChat
             rideId={ride.id}
@@ -317,8 +484,8 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
 
       {/* Online Presence Roster */}
       {presenceUsers.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-slate-200/60 flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
+        <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800 flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
             <Users className="w-3 h-3 text-slate-400" />
             Online in Room ({presenceUsers.length}):
           </span>
@@ -328,8 +495,8 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
                 key={`${u.user_id}-${idx}`}
                 className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${
                   u.role === 'HOST'
-                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800'
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
                 }`}
               >
                 <span

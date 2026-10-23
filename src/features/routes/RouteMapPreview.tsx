@@ -1,9 +1,18 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import type { CalculatedRoute, CalculatedWaypoint } from './route.types';
 import type { RideRoute, RideWaypoint } from '@/features/rides/ride.types';
 import { decodePolyline } from './polyline.utils';
 import { Badge } from '@/components/ui/Badge';
-import { MapPin, Navigation, Clock, Gauge, Compass } from 'lucide-react';
+import {
+  MapPin,
+  Navigation,
+  Clock,
+  Gauge,
+  Compass,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+} from 'lucide-react';
 
 export interface RouteMapPreviewProps {
   route?: CalculatedRoute | RideRoute | null;
@@ -19,6 +28,12 @@ export const RouteMapPreview: React.FC<RouteMapPreviewProps> = ({
   showStats = true,
 }) => {
   const [hoveredWaypoint, setHoveredWaypoint] = useState<CalculatedWaypoint | RideWaypoint | null>(null);
+
+  // Zoom and pan state
+  const [zoom, setZoom] = useState<number>(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const dragStartRef = useRef<{ clientX: number; clientY: number; startPanX: number; startPanY: number } | null>(null);
 
   // Extract coordinates from geometry_json or decode encoded_polyline
   const coordinates: [number, number][] = useMemo(() => {
@@ -37,7 +52,7 @@ export const RouteMapPreview: React.FC<RouteMapPreviewProps> = ({
     return waypoints.map((wp) => [wp.latitude, wp.longitude]);
   }, [route, waypoints]);
 
-  // Project geographic coordinates into SVG viewBox (500 x 300)
+  // Project geographic coordinates into SVG viewBox (500 x 280)
   const { pathData, projectedWaypoints } = useMemo(() => {
     const width = 500;
     const height = 280;
@@ -90,6 +105,91 @@ export const RouteMapPreview: React.FC<RouteMapPreviewProps> = ({
     return { pathData: d, projectedWaypoints: projWaypoints };
   }, [coordinates, waypoints]);
 
+  // Zoom handlers
+  const handleZoomIn = () => {
+    setZoom((z) => Math.min(4, Math.round((z + 0.4) * 10) / 10));
+  };
+
+  const handleZoomOut = () => {
+    setZoom((z) => {
+      const next = Math.max(1, Math.round((z - 0.4) * 10) / 10);
+      if (next === 1) setPan({ x: 0, y: 0 });
+      return next;
+    });
+  };
+
+  const handleResetFit = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  // Wheel zoom
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.25 : -0.25;
+    setZoom((z) => {
+      const next = Math.min(4, Math.max(1, Math.round((z + delta) * 10) / 10));
+      if (next === 1) setPan({ x: 0, y: 0 });
+      return next;
+    });
+  };
+
+  // Drag pan handlers (Mouse)
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoom <= 1) return;
+    setIsPanning(true);
+    dragStartRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      startPanX: pan.x,
+      startPanY: pan.y,
+    };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPanning || !dragStartRef.current) return;
+    const dx = e.clientX - dragStartRef.current.clientX;
+    const dy = e.clientY - dragStartRef.current.clientY;
+    setPan({
+      x: dragStartRef.current.startPanX + dx,
+      y: dragStartRef.current.startPanY + dy,
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+    dragStartRef.current = null;
+  };
+
+  // Drag pan handlers (Touch)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (zoom <= 1 || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    setIsPanning(true);
+    dragStartRef.current = {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      startPanX: pan.x,
+      startPanY: pan.y,
+    };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isPanning || !dragStartRef.current || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - dragStartRef.current.clientX;
+    const dy = touch.clientY - dragStartRef.current.clientY;
+    setPan({
+      x: dragStartRef.current.startPanX + dx,
+      y: dragStartRef.current.startPanY + dy,
+    });
+  };
+
+  const handleTouchEnd = () => {
+    setIsPanning(false);
+    dragStartRef.current = null;
+  };
+
   if (!route && waypoints.length === 0) {
     return (
       <div className={`rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center text-xs text-muted-foreground ${className}`}>
@@ -106,8 +206,8 @@ export const RouteMapPreview: React.FC<RouteMapPreviewProps> = ({
     <div className={`relative rounded-xl border border-border/80 bg-slate-950 text-white overflow-hidden shadow-sm ${className}`}>
       {/* TOP STATS BAR */}
       {showStats && (
-        <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700/60 shadow-sm">
+        <div className="absolute top-2.5 left-2.5 right-14 z-10 flex items-center justify-between text-xs pointer-events-none">
+          <div className="flex items-center gap-2 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700/60 shadow-sm pointer-events-auto">
             {distanceKm && (
               <span className="flex items-center gap-1 font-semibold text-emerald-400">
                 <Gauge className="h-3.5 w-3.5" /> {distanceKm} km
@@ -120,126 +220,179 @@ export const RouteMapPreview: React.FC<RouteMapPreviewProps> = ({
             )}
           </div>
 
-          <Badge variant="cyan" className="bg-[#00A2A5]/20 text-[#43CBD0] border-[#00A2A5]/40 text-[10px] hidden sm:inline-flex">
+          <Badge variant="cyan" className="bg-[#00A2A5]/20 text-[#43CBD0] border-[#00A2A5]/40 text-[10px] hidden sm:inline-flex pointer-events-auto">
             {waypoints.length} Route Stops
           </Badge>
         </div>
       )}
 
+      {/* ZOOM & RESET CONTROLS */}
+      <div className="absolute top-2.5 right-2.5 z-20 flex flex-col items-center gap-1 bg-slate-900/90 backdrop-blur-md p-1 rounded-xl border border-slate-700/80 shadow-lg">
+        <button
+          type="button"
+          onClick={handleZoomIn}
+          disabled={zoom >= 4}
+          title="Zoom in (+)"
+          aria-label="Zoom in"
+          className="p-1.5 rounded-lg text-slate-200 hover:text-white hover:bg-slate-800 disabled:opacity-30 transition-colors"
+        >
+          <ZoomIn className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={handleZoomOut}
+          disabled={zoom <= 1}
+          title="Zoom out (-)"
+          aria-label="Zoom out"
+          className="p-1.5 rounded-lg text-slate-200 hover:text-white hover:bg-slate-800 disabled:opacity-30 transition-colors"
+        >
+          <ZoomOut className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={handleResetFit}
+          title="Reset to Fit Route"
+          aria-label="Fit route"
+          className="p-1.5 rounded-lg text-slate-200 hover:text-white hover:bg-slate-800 transition-colors"
+        >
+          <Maximize2 className="h-3 w-3" />
+        </button>
+        <div className="px-1 text-[8.5px] font-mono text-slate-400 font-semibold border-t border-slate-700/60 pt-0.5">
+          {zoom.toFixed(1)}x
+        </div>
+      </div>
+
       {/* SVG ROUTE CANVAS */}
-      <svg
-        viewBox="0 0 500 280"
-        className="w-full h-auto max-h-[300px] select-none block"
-        preserveAspectRatio="xMidYMid meet"
+      <div
+        className={`w-full overflow-hidden select-none ${
+          zoom > 1 ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
+        }`}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
-        {/* Background Grid Pattern */}
-        <defs>
-          <pattern id="road-grid" width="25" height="25" patternUnits="userSpaceOnUse">
-            <path d="M 25 0 L 0 0 0 25" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
-          </pattern>
-          <linearGradient id="route-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#10B981" />
-            <stop offset="50%" stopColor="#00A2A5" />
-            <stop offset="100%" stopColor="#E85C0D" />
-          </linearGradient>
-          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-        </defs>
+        <svg
+          viewBox="0 0 500 280"
+          className="w-full h-auto max-h-[300px] select-none block"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {/* Background Grid Pattern */}
+          <defs>
+            <pattern id="road-grid" width="25" height="25" patternUnits="userSpaceOnUse">
+              <path d="M 25 0 L 0 0 0 25" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+            </pattern>
+            <linearGradient id="route-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#10B981" />
+              <stop offset="50%" stopColor="#00A2A5" />
+              <stop offset="100%" stopColor="#E85C0D" />
+            </linearGradient>
+            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
 
-        <rect width="500" height="280" fill="url(#road-grid)" />
+          <rect width="500" height="280" fill="url(#road-grid)" />
 
-        {/* Soft Route Halo Shadow */}
-        {pathData && (
-          <path
-            d={pathData}
-            fill="none"
-            stroke="#003C84"
-            strokeWidth="10"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity="0.3"
-          />
-        )}
-
-        {/* Active Route Corridor Line */}
-        {pathData && (
-          <path
-            d={pathData}
-            fill="none"
-            stroke="url(#route-gradient)"
-            strokeWidth="4.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            filter="url(#glow)"
-          />
-        )}
-
-        {/* WAYPOINT NODES ON CANVAS */}
-        {projectedWaypoints.map((wp) => {
-          const isOrigin = wp.sequence === 1 || wp.type === 'ORIGIN';
-          const isDest = wp.sequence === waypoints.length || wp.type === 'DESTINATION';
-
-          return (
-            <g
-              key={`svg_wp_${wp.sequence}`}
-              className="cursor-pointer transition-transform hover:scale-125"
-              onMouseEnter={() => setHoveredWaypoint(wp)}
-              onMouseLeave={() => setHoveredWaypoint(null)}
-            >
-              {/* Outer pulsing ring for Origin / Destination */}
-              {(isOrigin || isDest) && (
-                <circle
-                  cx={wp.svgX}
-                  cy={wp.svgY}
-                  r="12"
-                  fill={isOrigin ? '#10B981' : '#EF4444'}
-                  opacity="0.25"
-                  className="animate-pulse"
-                />
-              )}
-
-              {/* Waypoint circle */}
-              <circle
-                cx={wp.svgX}
-                cy={wp.svgY}
-                r={isOrigin || isDest ? 8 : 5}
-                fill={isOrigin ? '#10B981' : isDest ? '#EF4444' : '#00A2A5'}
-                stroke="#FFFFFF"
-                strokeWidth="2"
+          {/* ZOOMABLE GROUP */}
+          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`} className="transition-transform duration-100 ease-out">
+            {/* Soft Route Halo Shadow */}
+            {pathData && (
+              <path
+                d={pathData}
+                fill="none"
+                stroke="#003C84"
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.3"
               />
+            )}
 
-              {/* Sequence text inside origin/destination */}
-              {(isOrigin || isDest) && (
-                <text
-                  x={wp.svgX}
-                  y={wp.svgY + 3.5}
-                  textAnchor="middle"
-                  fill="#FFFFFF"
-                  fontSize="8"
-                  fontWeight="bold"
+            {/* Active Route Corridor Line */}
+            {pathData && (
+              <path
+                d={pathData}
+                fill="none"
+                stroke="url(#route-gradient)"
+                strokeWidth="4.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                filter="url(#glow)"
+              />
+            )}
+
+            {/* WAYPOINT NODES ON CANVAS */}
+            {projectedWaypoints.map((wp) => {
+              const isOrigin = wp.sequence === 1 || wp.type === 'ORIGIN';
+              const isDest = wp.sequence === waypoints.length || wp.type === 'DESTINATION';
+
+              return (
+                <g
+                  key={`svg_wp_${wp.sequence}`}
+                  className="cursor-pointer transition-transform hover:scale-125"
+                  onMouseEnter={() => setHoveredWaypoint(wp)}
+                  onMouseLeave={() => setHoveredWaypoint(null)}
                 >
-                  {isOrigin ? 'A' : 'B'}
-                </text>
-              )}
+                  {/* Outer pulsing ring for Origin / Destination */}
+                  {(isOrigin || isDest) && (
+                    <circle
+                      cx={wp.svgX}
+                      cy={wp.svgY}
+                      r="12"
+                      fill={isOrigin ? '#10B981' : '#EF4444'}
+                      opacity="0.25"
+                      className="animate-pulse"
+                    />
+                  )}
 
-              {/* Label text */}
-              <text
-                x={wp.svgX}
-                y={wp.svgY - (isOrigin || isDest ? 12 : 9)}
-                textAnchor="middle"
-                fill="#F1F5F9"
-                fontSize="9"
-                fontWeight={isOrigin || isDest ? '600' : '400'}
-                className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-              >
-                {wp.label.length > 18 ? `${wp.label.slice(0, 16)}...` : wp.label}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+                  {/* Waypoint circle */}
+                  <circle
+                    cx={wp.svgX}
+                    cy={wp.svgY}
+                    r={isOrigin || isDest ? 8 : 5}
+                    fill={isOrigin ? '#10B981' : isDest ? '#EF4444' : '#00A2A5'}
+                    stroke="#FFFFFF"
+                    strokeWidth="2"
+                  />
+
+                  {/* Sequence text inside origin/destination */}
+                  {(isOrigin || isDest) && (
+                    <text
+                      x={wp.svgX}
+                      y={wp.svgY + 3.5}
+                      textAnchor="middle"
+                      fill="#FFFFFF"
+                      fontSize="8"
+                      fontWeight="bold"
+                    >
+                      {isOrigin ? 'A' : 'B'}
+                    </text>
+                  )}
+
+                  {/* Label text */}
+                  <text
+                    x={wp.svgX}
+                    y={wp.svgY - (isOrigin || isDest ? 12 : 9)}
+                    textAnchor="middle"
+                    fill="#F1F5F9"
+                    fontSize="9"
+                    fontWeight={isOrigin || isDest ? '600' : '400'}
+                    className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+                  >
+                    {wp.label.length > 18 ? `${wp.label.slice(0, 16)}...` : wp.label}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+      </div>
 
       {/* HOVER TOOLTIP */}
       {hoveredWaypoint && (

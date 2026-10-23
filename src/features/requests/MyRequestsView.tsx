@@ -7,6 +7,7 @@ import { RatingModal } from '@/features/ratings/RatingModal';
 import { ReportModal } from '@/features/moderation/ReportModal';
 import { BlockUserModal } from '@/features/moderation/BlockUserModal';
 import { ActiveRideSessionBanner } from '@/features/realtime/ActiveRideSessionBanner';
+import { RideCoordinationChat } from '@/features/rides/RideCoordinationChat';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
@@ -23,6 +24,7 @@ import {
   ShieldAlert,
   Ban,
   Trash2,
+  MessageSquare,
 } from 'lucide-react';
 import { SwipeableItem } from '@/components/ui/SwipeableItem';
 
@@ -40,6 +42,7 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
   const [reportUser, setReportUser] = useState<{ user: PublicStudentInfo; rideId?: string } | null>(null);
   const [blockUser, setBlockUser] = useState<PublicStudentInfo | null>(null);
   const [hasRatedMap, setHasRatedMap] = useState<Record<string, boolean>>({});
+  const [chatRideId, setChatRideId] = useState<string | null>(null);
 
   const fetchRequests = useCallback(async () => {
     if (!user) return;
@@ -337,6 +340,19 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {/* CHAT WITH HOST FOR ACCEPTED REQUESTS */}
+                      {req.status === 'ACCEPTED' && req.ride && req.ride.status !== 'COMPLETED' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setChatRideId(chatRideId === req.ride_id ? null : req.ride_id)}
+                          className="h-7 text-xs border-[#003C84]/40 text-[#003C84] hover:bg-[#003C84]/10 gap-1 font-semibold"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          {chatRideId === req.ride_id ? 'Hide Chat' : 'Chat with Host'}
+                        </Button>
+                      )}
+
                       {/* RATE COMPLETED TRIP */}
                       {req.status === 'ACCEPTED' && req.ride?.status === 'COMPLETED' && (
                         hasRatedMap[req.id] ? (
@@ -369,6 +385,19 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
                       )}
                     </div>
                   </div>
+
+                  {/* EXPANDABLE TRIP COORDINATION CHAT */}
+                  {chatRideId === req.ride_id && user && req.ride && (
+                    <div className="mt-3 pt-3 border-t border-border/70 animate-in fade-in-50 duration-200">
+                      <RideCoordinationChat
+                        rideId={req.ride_id}
+                        rideStatus={req.ride.status}
+                        currentUserId={user.id}
+                        currentUserName={profile?.name || user.email || 'Passenger'}
+                        hostId={req.ride.host_id}
+                      />
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </SwipeableItem>

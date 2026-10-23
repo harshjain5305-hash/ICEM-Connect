@@ -25,6 +25,37 @@ interface RoomRegistration {
 const localRoomRegistrations = new Map<string, Set<RoomRegistration>>();
 const localLiveChannels = new Map<string, RealtimeChannel>();
 
+// Cross-tab broadcast channel for local dev multi-tab testing
+let crossTabBus: BroadcastChannel | null = null;
+if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+  try {
+    crossTabBus = new BroadcastChannel('icem_connect_realtime_crosstab');
+    crossTabBus.onmessage = (msgEvent) => {
+      const data = msgEvent.data;
+      if (data && data.rideId && data.event) {
+        const subscribers = localRoomRegistrations.get(data.rideId);
+        if (subscribers) {
+          for (const sub of subscribers) {
+            sub.onEvent?.(data.event);
+          }
+        }
+      }
+    };
+  } catch {
+    // Unsupported or restricted
+  }
+}
+
+function emitCrossTab(rideId: string, event: RealtimeRideEvent) {
+  if (crossTabBus) {
+    try {
+      crossTabBus.postMessage({ rideId, event });
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export const realtimeService = {
   /**
    * Generates the canonical private channel name for a ride room.
@@ -178,6 +209,9 @@ export const realtimeService = {
           }
         }
 
+        // Cross-tab broadcast for multi-tab testing
+        emitCrossTab(rideId, event);
+
         // Broadcast to live Supabase channel if active
         if (supabaseChannel) {
           try {
@@ -222,6 +256,9 @@ export const realtimeService = {
         sub.onEvent?.(event);
       }
     }
+
+    // Cross-tab broadcast for multi-tab testing
+    emitCrossTab(rideId, event);
 
     const liveChannel = localLiveChannels.get(rideId);
     if (liveChannel) {

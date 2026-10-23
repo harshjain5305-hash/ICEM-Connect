@@ -183,6 +183,14 @@ export const liveLocationService = {
       longitude: update.longitude,
     });
 
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(`icem_live_loc_${update.ride_id}`, JSON.stringify(update));
+      }
+    } catch {
+      // ignore
+    }
+
     // Record heartbeat on server if live
     const isLive = isSupabaseConfigured();
     if (isLive && isValidUuid(update.ride_id) && isValidUuid(hostId)) {
@@ -239,6 +247,14 @@ export const liveLocationService = {
     latestLocations.delete(rideId);
     lastBroadcasts.delete(rideId);
 
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(`icem_live_loc_${rideId}`);
+      }
+    } catch {
+      // ignore
+    }
+
     await realtimeService.broadcastRideEvent(rideId, {
       type: 'location:stopped',
       ride_id: rideId,
@@ -259,7 +275,26 @@ export const liveLocationService = {
     if (!canSubscribe) {
       throw new Error('Forbidden: Unauthorized to receive live location.');
     }
-    return latestLocations.get(rideId) || null;
+    const inMem = latestLocations.get(rideId);
+    if (inMem) return inMem;
+
+    // Multi-tab fallback recovery
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        const raw = sessionStorage.getItem(`icem_live_loc_${rideId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw) as LiveLocationUpdate;
+          if (Date.now() - new Date(parsed.timestamp).getTime() < 10 * 60 * 1000) {
+            latestLocations.set(rideId, parsed);
+            return parsed;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return null;
   },
 
   /**
@@ -268,5 +303,12 @@ export const liveLocationService = {
   reset(): void {
     lastBroadcasts.clear();
     latestLocations.clear();
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.clear();
+      }
+    } catch {
+      // ignore
+    }
   },
 };
