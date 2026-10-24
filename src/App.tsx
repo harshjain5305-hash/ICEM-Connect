@@ -21,6 +21,7 @@ const AppContent: React.FC = () => {
   const [selectedCorridor, setSelectedCorridor] = useState<{
     pickupLocationId: string;
     dropLocationId: string;
+    timestamp?: number;
   } | null>(null);
 
   const renderTabContent = () => {

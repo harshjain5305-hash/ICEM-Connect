@@ -42,4 +42,27 @@ describe('Location Service & Seed Catalog (Phase 2)', () => {
     expect(loc?.name).toContain('Somatne Phata');
     expect(loc?.latitude).toBeCloseTo(18.7182, 3);
   });
+
+  it('maps seed corridor slugs to live location records even when IDs are UUIDs', async () => {
+    // Test resolving all 5 corridor endpoints
+    const akurdi = await locationService.getById('loc_akurdi_station');
+    expect(akurdi).not.toBeNull();
+    expect(akurdi?.name).toContain('Akurdi');
+
+    const icem = await locationService.getById('loc_icem_campus');
+    expect(icem).not.toBeNull();
+    expect(icem?.name).toContain('ICEM');
+
+    const talegaon = await locationService.getById('loc_talegaon_station');
+    expect(talegaon).not.toBeNull();
+    expect(talegaon?.name).toContain('Talegaon');
+
+    const kiwale = await locationService.getById('loc_kiwale_phata');
+    expect(kiwale).not.toBeNull();
+    expect(kiwale?.name).toContain('Kiwale');
+
+    const bhosari = await locationService.getById('loc_bhosari_stand');
+    expect(bhosari).not.toBeNull();
+    expect(bhosari?.name).toContain('Bhosari');
+  });
 });

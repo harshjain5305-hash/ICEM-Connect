@@ -210,11 +210,37 @@ export const locationService = {
   },
 
   /**
-   * Retrieves a location by its ID.
+   * Retrieves a location by its ID, seed slug, or name.
    */
   async getById(id: string): Promise<Location | null> {
+    if (!id) return null;
+
+    // 1. Fetch live active locations (or fallback seed locations)
     const results = await this.search({ limit: 50 });
-    return results.find((loc) => loc.id === id) || null;
+
+    // Direct match on ID (e.g. database UUID or seed ID)
+    const directMatch = results.find((loc) => loc.id === id);
+    if (directMatch) return directMatch;
+
+    // 2. Check if id is a canonical seed key (e.g. 'loc_akurdi_station', 'loc_icem_campus')
+    const seed = SEED_LOCATIONS.find((s) => s.id === id);
+    if (seed) {
+      // Find the corresponding location in live results by name
+      const liveByName = results.find(
+        (l) => l.name.trim().toLowerCase() === seed.name.trim().toLowerCase()
+      );
+      if (liveByName) return liveByName;
+      return seed;
+    }
+
+    // 3. Fallback: check if id matches a location name directly
+    const byName = results.find(
+      (l) => l.name.trim().toLowerCase() === id.trim().toLowerCase()
+    );
+    if (byName) return byName;
+
+    // 4. Final fallback to seed locations
+    return SEED_LOCATIONS.find((loc) => loc.id === id) || null;
   },
 
   /**

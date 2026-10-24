@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 
 export interface FindRideViewProps {
-  initialCorridor?: { pickupLocationId: string; dropLocationId: string } | null;
+  initialCorridor?: { pickupLocationId: string; dropLocationId: string; timestamp?: number } | null;
   onOfferClick?: () => void;
   onViewRequestsClick?: () => void;
   onRequestAuth?: () => void;
@@ -124,7 +124,7 @@ export const FindRideView: React.FC<FindRideViewProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [initialCorridor, user?.id]);
+  }, [initialCorridor, initialCorridor?.timestamp, user?.id]);
 
   // 2. Check existing route alerts when search result returns empty
   useEffect(() => {

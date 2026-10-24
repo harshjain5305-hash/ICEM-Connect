@@ -25,8 +25,14 @@ export interface PopularCorridor {
   estimatedTime: string;
 }
 
+export interface CorridorSelection {
+  pickupLocationId: string;
+  dropLocationId: string;
+  timestamp?: number;
+}
+
 export interface HomeDashboardProps {
-  onFindRideClick?: (corridor?: { pickupLocationId: string; dropLocationId: string }) => void;
+  onFindRideClick?: (corridor?: CorridorSelection) => void;
   onOfferRideClick?: () => void;
   userEmail?: string | null;
 }
@@ -134,6 +140,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                   onFindRideClick?.({
                     pickupLocationId: corridor.pickupLocationId,
                     dropLocationId: corridor.dropLocationId,
+                    timestamp: Date.now(),
                   })
                 }
                 className="group cursor-pointer rounded-xl border border-border bg-card p-3.5 transition-all hover:border-primary/40 hover:shadow-sm"

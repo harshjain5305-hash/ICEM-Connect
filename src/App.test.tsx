@@ -60,4 +60,29 @@ describe('App Shell & Design System (Phase 0)', () => {
     const campusBadge = screen.getByText(/Campus Verified/i);
     expect(campusBadge).toHaveClass('text-[#00A2A5]');
   });
+
+  it('navigates to Find tab and pre-fills corridor when clicking a popular corridor card', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+
+    // Find the Akurdi corridor card
+    const akurdiCard = screen.getByText(/Akurdi \/ Nigdi/i);
+    expect(akurdiCard).toBeInTheDocument();
+
+    // Click the card
+    await act(async () => {
+      akurdiCard.click();
+    });
+
+    // Should switch to Find tab and show search header
+    expect(screen.getByText('Find a Verified Student Ride')).toBeInTheDocument();
+
+    // Pickup and Drop should be populated with resolved location names
+    const pickupInput = screen.getByLabelText(/Pickup Spot/i);
+    const dropInput = screen.getByLabelText(/Drop Destination/i);
+
+    expect(pickupInput).toHaveValue('Akurdi Railway Station Chowk');
+    expect(dropInput).toHaveValue('ICEM Main Campus (Parandwadi)');
+  });
 });
