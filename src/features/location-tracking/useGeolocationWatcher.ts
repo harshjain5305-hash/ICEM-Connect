@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { liveLocationService } from './liveLocation.service';
+import { GPSKalmanFilter } from './gpsKalmanFilter';
 import type {
   LiveLocationUpdate,
   LocationSharingStatus,
@@ -30,6 +31,7 @@ export function useGeolocationWatcher({
   const [isGpsTurnedOff, setIsGpsTurnedOff] = useState<boolean>(false);
 
   const watchIdRef = useRef<number | null>(null);
+  const kalmanFilterRef = useRef<GPSKalmanFilter>(new GPSKalmanFilter());
 
   // Check browser permission state if supported
   useEffect(() => {
@@ -58,6 +60,7 @@ export function useGeolocationWatcher({
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    kalmanFilterRef.current.reset();
     setStatus('ENDED');
     liveLocationService.stopLocationSharing(hostId, rideId).catch(() => {});
   }, [hostId, rideId]);
@@ -84,16 +87,28 @@ export function useGeolocationWatcher({
           setIsGpsTurnedOff(false);
           setErrorMessage(null);
 
+          const rawAccuracy = Math.round(pos.coords.accuracy);
+          const rawHeading =
+            pos.coords.heading !== null && !isNaN(pos.coords.heading) ? Math.round(pos.coords.heading) : null;
+          const rawSpeed =
+            pos.coords.speed !== null && !isNaN(pos.coords.speed) && pos.coords.speed >= 0
+              ? Math.round(pos.coords.speed * 3.6) // convert m/s to km/h
+              : null;
+
+          const filtered = kalmanFilterRef.current.filter(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            rawAccuracy,
+            pos.timestamp || Date.now()
+          );
+
           const update: LiveLocationUpdate = {
             ride_id: rideId,
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            accuracy: Math.round(pos.coords.accuracy),
-            heading: pos.coords.heading !== null && !isNaN(pos.coords.heading) ? Math.round(pos.coords.heading) : null,
-            speed:
-              pos.coords.speed !== null && !isNaN(pos.coords.speed) && pos.coords.speed >= 0
-                ? Math.round(pos.coords.speed * 3.6) // convert m/s to km/h
-                : null,
+            latitude: filtered.latitude,
+            longitude: filtered.longitude,
+            accuracy: filtered.accuracy,
+            heading: rawHeading,
+            speed: rawSpeed ?? filtered.estimatedSpeedKph,
             timestamp: new Date().toISOString(),
           };
 

@@ -1218,6 +1218,35 @@ These are documented requirements only. They must not be treated as implemented 
 
 ## Changelog
 
+### 2026-10-25 — High-Precision Map Tracking, Kalman Filter, Snap-to-Road & 60fps Movement Smoothing Implemented & Verified
+
+State:
+- Solved GPS noise, agricultural field drift, periodic marker teleportation, and rural network drops during active ride tracking:
+  1. **2D GPS Kalman Filter (Noise & Leap Suppression):**
+     - Implemented [`src/features/location-tracking/gpsKalmanFilter.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/gpsKalmanFilter.ts) tracking position, velocity covariance, and physically constrained motion dynamics.
+     - Automatically penalizes and dampens impossible GPS teleportation spikes ($>130\text{ km/h}$), suppressing satellite multipath noise without lagging true vehicle turns.
+     - Integrated into [`liveLocation.service.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/liveLocation.service.ts) and driver phone capture in [`useGeolocationWatcher.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/useGeolocationWatcher.ts).
+  2. **Corridor Snap-to-Road Engine (Asphalt Locking):**
+     - Implemented [`src/features/routes/snapToRoad.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/snapToRoad.ts) calculating orthogonal projections across route polyline segments.
+     - Snaps points within $45\text{m}$ directly onto the asphalt centerline, while preserving legitimate driver detours ($>45\text{m}$, e.g. petrol pumps or dhabas).
+     - Derives segment tangent bearings to stabilize vehicle orientation against compass jitter at low speeds.
+  3. **60fps Fluid Marker Movement & Angle LERP:**
+     - Implemented [`src/features/location-tracking/useSmoothVehicleMarker.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/useSmoothVehicleMarker.ts) driven by continuous `requestAnimationFrame` interpolation.
+     - Eliminates 3–5s marker teleportation using cubic-eased LERP between periodic broadcasts.
+     - Implemented shortest-arc angular interpolation (`interpolateShortestAngle`) preventing $360^\circ$ reverse compass spin when heading crosses North ($350^\circ \to 10^\circ$).
+  4. **Rural Network Drops & Kinematic Dead Reckoning:**
+     - Extrapolates vehicle movement along the corridor polyline when cell signal drops along rural expressway stretches ($>4\text{s}$ update silence).
+     - Soft-blends (1.5s ease-out) from extrapolated position to true GPS coordinates upon signal recovery, eliminating violent visual snapping.
+     - Upgraded [`LiveRideTrackingMap.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/LiveRideTrackingMap.tsx) with live movement state badges (`Road Snapped (60fps)`, `Predicting Route (Dead Reckoning)`).
+- Tested and verified:
+  - Created [`src/features/location-tracking/gpsKalmanFilter.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/gpsKalmanFilter.test.ts) (5 unit tests).
+  - Created [`src/features/routes/snapToRoad.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/snapToRoad.test.ts) (4 unit tests).
+  - Created [`src/features/location-tracking/useSmoothVehicleMarker.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/useSmoothVehicleMarker.test.ts) (5 unit tests).
+  - Expanded [`src/features/location-tracking/LiveRideTrackingMap.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/LiveRideTrackingMap.test.tsx) (4 unit tests).
+  - Verified test suite: **274/274 tests passing across 45 test suites** (`npm test`).
+  - Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+  - Verified production build: **clean bundle generated in 4.67s** (`npm run build`).
+
 ### 2026-10-25 — Recurring Commute Routines (Mon–Fri), 1-Click WhatsApp Broadcast & Daily Retention Engine Implemented & Verified
 
 State:

@@ -4,6 +4,7 @@ import { rideSessionRepository } from '@/features/rides/rideSession.repository';
 import { requestRepository } from '@/features/requests/request.repository';
 import { authService } from '@/features/auth/auth.service';
 import { realtimeService } from '@/features/realtime/realtime.service';
+import { GPSKalmanFilter } from './gpsKalmanFilter';
 import { liveLocationUpdateSchema } from './location.schema';
 import type { LiveLocationUpdate } from './location.types';
 
@@ -43,6 +44,20 @@ interface LastBroadcastRecord {
 
 const lastBroadcasts = new Map<string, LastBroadcastRecord>();
 const latestLocations = new Map<string, LiveLocationUpdate>();
+const kalmanFilters = new Map<string, GPSKalmanFilter>();
+
+function getKalmanFilter(rideId: string): GPSKalmanFilter {
+  let filter = kalmanFilters.get(rideId);
+  if (!filter) {
+    filter = new GPSKalmanFilter({
+      processNoise: 0.00003,
+      measurementNoise: 0.002,
+      maxSpeedKph: 130,
+    });
+    kalmanFilters.set(rideId, filter);
+  }
+  return filter;
+}
 
 export const liveLocationService = {
   /**
@@ -175,17 +190,35 @@ export const liveLocationService = {
       return false; // Throttled
     }
 
-    // Update transient cache
-    latestLocations.set(update.ride_id, update);
+    // Apply 2D GPS Kalman Filter to eliminate noise and impossible leaps
+    const kalman = getKalmanFilter(update.ride_id);
+    const timeMs = new Date(update.timestamp).getTime() || Date.now();
+    const filtered = kalman.filter(
+      update.latitude,
+      update.longitude,
+      update.accuracy,
+      timeMs
+    );
+
+    const cleanedUpdate: LiveLocationUpdate = {
+      ...update,
+      latitude: filtered.latitude,
+      longitude: filtered.longitude,
+      accuracy: filtered.accuracy,
+      speed: update.speed ?? filtered.estimatedSpeedKph,
+    };
+
+    // Update transient cache with cleaned coordinates
+    latestLocations.set(update.ride_id, cleanedUpdate);
     lastBroadcasts.set(update.ride_id, {
       timestamp: Date.now(),
-      latitude: update.latitude,
-      longitude: update.longitude,
+      latitude: cleanedUpdate.latitude,
+      longitude: cleanedUpdate.longitude,
     });
 
     try {
       if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem(`icem_live_loc_${update.ride_id}`, JSON.stringify(update));
+        sessionStorage.setItem(`icem_live_loc_${cleanedUpdate.ride_id}`, JSON.stringify(cleanedUpdate));
       }
     } catch {
       // ignore
@@ -193,26 +226,26 @@ export const liveLocationService = {
 
     // Record heartbeat on server if live
     const isLive = isSupabaseConfigured();
-    if (isLive && isValidUuid(update.ride_id) && isValidUuid(hostId)) {
+    if (isLive && isValidUuid(cleanedUpdate.ride_id) && isValidUuid(hostId)) {
       void supabase.rpc('record_location_heartbeat', {
-        p_ride_id: update.ride_id,
+        p_ride_id: cleanedUpdate.ride_id,
         p_host_id: hostId,
       });
     }
 
     // Broadcast location update over Realtime ride room
-    await realtimeService.broadcastRideEvent(update.ride_id, {
+    await realtimeService.broadcastRideEvent(cleanedUpdate.ride_id, {
       type: 'location:update',
-      ride_id: update.ride_id,
-      timestamp: update.timestamp,
+      ride_id: cleanedUpdate.ride_id,
+      timestamp: cleanedUpdate.timestamp,
       payload: {
-        rideId: update.ride_id,
-        latitude: update.latitude,
-        longitude: update.longitude,
-        accuracyMeters: update.accuracy,
-        heading: update.heading ?? null,
-        speed: update.speed ?? null,
-        timestamp: update.timestamp,
+        rideId: cleanedUpdate.ride_id,
+        latitude: cleanedUpdate.latitude,
+        longitude: cleanedUpdate.longitude,
+        accuracyMeters: cleanedUpdate.accuracy,
+        heading: cleanedUpdate.heading ?? null,
+        speed: cleanedUpdate.speed ?? null,
+        timestamp: cleanedUpdate.timestamp,
       },
     });
 
@@ -246,6 +279,7 @@ export const liveLocationService = {
   async stopLocationSharing(hostId: string, rideId: string): Promise<void> {
     latestLocations.delete(rideId);
     lastBroadcasts.delete(rideId);
+    kalmanFilters.delete(rideId);
 
     try {
       if (typeof sessionStorage !== 'undefined') {

@@ -4,6 +4,7 @@ import type { LiveLocationUpdate, LocationFreshness } from './location.types';
 import { calculateLocationFreshness } from './location.types';
 import { decodePolyline } from '@/features/routes/polyline.utils';
 import { calculateWaypointProgress, type WaypointLike } from '@/features/routes/waypointProgress';
+import { useSmoothVehicleMarker } from './useSmoothVehicleMarker';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import {
@@ -20,6 +21,7 @@ import {
   Crosshair,
   Check,
   Milestone,
+  Zap,
 } from 'lucide-react';
 
 export interface LiveRideTrackingMapProps {
@@ -90,6 +92,13 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
 
   const originCoord = coordinates[0];
   const destCoord = coordinates[coordinates.length - 1];
+
+  // 60fps Smooth Vehicle Movement, Snap-to-Road & Dead Reckoning
+  const smoothMarker = useSmoothVehicleMarker(
+    liveLocation,
+    coordinates,
+    ride.status === 'ACTIVE'
+  );
 
   // Monotonic persistence of passed waypoints
   const [persistentPassedSequences, setPersistentPassedSequences] = useState<Set<number>>(new Set());
@@ -245,10 +254,13 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
         waypointProgress.passedSequences.has(destWp.sequence)
       : ride.status === 'COMPLETED';
 
-    // 4. Project live host marker with soft edge-clamping
+    // 4. Project live host marker with soft edge-clamping (using 60fps smoothed position)
     let hostPt: { x: number; y: number; isOffScreen: boolean } | null = null;
-    if (liveLocation) {
-      const raw = project(liveLocation.latitude, liveLocation.longitude);
+    const effectiveLat = smoothMarker.latitude ?? liveLocation?.latitude ?? null;
+    const effectiveLng = smoothMarker.longitude ?? liveLocation?.longitude ?? null;
+
+    if (effectiveLat !== null && effectiveLng !== null) {
+      const raw = project(effectiveLat, effectiveLng);
       // Soft-clamp host inside visible map extents so marker is never lost off-screen
       const clampedX = Math.min(width - 20, Math.max(20, raw.x));
       const clampedY = Math.min(height - 20, Math.max(20, raw.y));
@@ -268,6 +280,8 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
   }, [
     coordinates,
     liveLocation,
+    smoothMarker.latitude,
+    smoothMarker.longitude,
     ride.waypoints,
     originCoord,
     destCoord,
@@ -745,14 +759,14 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
               </g>
             )}
 
-            {/* LIVE HOST VEHICLE MARKER */}
+            {/* LIVE HOST VEHICLE MARKER (60FPS SMOOTHED & ROAD-SNAPPED) */}
             {projectedHost && (
-              <g className="transition-all duration-500 ease-out">
+              <g className="transition-transform duration-75 ease-linear">
                 {/* GPS Accuracy Halo Ring */}
                 <circle
                   cx={projectedHost.x}
                   cy={projectedHost.y}
-                  r={Math.min(32, Math.max(16, (liveLocation?.accuracy || 12) * 0.8))}
+                  r={Math.min(32, Math.max(16, (smoothMarker.accuracy || 12) * 0.8))}
                   fill="url(#hostHaloGrad)"
                   className="animate-pulse"
                 />
@@ -763,7 +777,7 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
                   cy={projectedHost.y}
                   r="18"
                   fill="none"
-                  stroke="#00A2A5"
+                  stroke={smoothMarker.movementMode === 'DEAD_RECKONING' ? '#F59E0B' : '#00A2A5'}
                   strokeWidth="1"
                   opacity="0.6"
                 />
@@ -774,14 +788,14 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
                   cy={projectedHost.y}
                   r="9"
                   fill="#003C84"
-                  stroke="#FFFFFF"
+                  stroke={smoothMarker.movementMode === 'DEAD_RECKONING' ? '#F59E0B' : '#FFFFFF'}
                   strokeWidth="2.5"
                   className="drop-shadow-lg"
                 />
 
                 {/* Heading Orientation Arrow */}
-                {liveLocation?.heading !== null && liveLocation?.heading !== undefined && (
-                  <g transform={`rotate(${liveLocation.heading}, ${projectedHost.x}, ${projectedHost.y})`}>
+                {smoothMarker.heading !== null && smoothMarker.heading !== undefined && (
+                  <g transform={`rotate(${smoothMarker.heading}, ${projectedHost.x}, ${projectedHost.y})`}>
                     <polygon
                       points={`${projectedHost.x},${projectedHost.y - 14} ${projectedHost.x - 4},${projectedHost.y - 8} ${projectedHost.x + 4},${projectedHost.y - 8}`}
                       fill="#F1F5F9"
@@ -791,13 +805,17 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
 
                 {/* Host Telemetry Label */}
                 <rect
-                  x={projectedHost.x - 30}
+                  x={projectedHost.x - 34}
                   y={projectedHost.y + 12}
-                  width="60"
+                  width="68"
                   height="15"
                   rx="4"
-                  fill="rgba(0, 60, 132, 0.95)"
-                  stroke="#00A2A5"
+                  fill={
+                    smoothMarker.movementMode === 'DEAD_RECKONING'
+                      ? 'rgba(180, 83, 9, 0.95)'
+                      : 'rgba(0, 60, 132, 0.95)'
+                  }
+                  stroke={smoothMarker.movementMode === 'DEAD_RECKONING' ? '#F59E0B' : '#00A2A5'}
                   strokeWidth="0.8"
                 />
                 <text
@@ -808,7 +826,8 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
                   fill="#FFFFFF"
                   fontWeight="700"
                 >
-                  HOST {liveLocation?.speed ? `${liveLocation.speed}kph` : ''}
+                  {smoothMarker.movementMode === 'DEAD_RECKONING' ? 'PREDICTED' : 'HOST'}{' '}
+                  {smoothMarker.speed ? `${smoothMarker.speed}kph` : ''}
                 </text>
               </g>
             )}
@@ -819,18 +838,35 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-[11px] pointer-events-none flex-wrap gap-2">
           <div className="flex items-center gap-2 bg-slate-900/90 backdrop-blur px-2.5 py-1 rounded-lg border border-slate-800 text-slate-200">
             <Gauge className="w-3.5 h-3.5 text-[#00A2A5]" />
-            <span>Speed: {liveLocation?.speed !== null && liveLocation?.speed !== undefined ? `${liveLocation.speed} km/h` : 'Stopped'}</span>
+            <span>
+              Speed:{' '}
+              {smoothMarker.speed !== null && smoothMarker.speed !== undefined
+                ? `${smoothMarker.speed} km/h`
+                : 'Stopped'}
+            </span>
           </div>
 
           <div className="flex items-center gap-2 bg-slate-900/90 backdrop-blur px-2.5 py-1 rounded-lg border border-slate-800 text-slate-200">
             <Compass className="w-3.5 h-3.5 text-[#EAA023]" />
-            <span>GPS Precision: &plusmn;{liveLocation?.accuracy || 12}m</span>
+            <span>GPS Precision: &plusmn;{smoothMarker.accuracy || 12}m</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900/90 backdrop-blur px-2.5 py-1 rounded-lg border border-slate-800 text-slate-300">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span>{secondsAgo < 5 ? 'Realtime' : `${secondsAgo}s delay`}</span>
-          </div>
+          {smoothMarker.movementMode === 'DEAD_RECKONING' ? (
+            <div className="flex items-center gap-1.5 bg-amber-950/90 backdrop-blur border border-amber-500/50 text-amber-300 px-2.5 py-1 rounded-lg animate-pulse font-semibold">
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>Predicting Route (Dead Reckoning)</span>
+            </div>
+          ) : smoothMarker.isSnappedToRoad ? (
+            <div className="flex items-center gap-1.5 bg-slate-900/90 backdrop-blur border border-emerald-500/30 text-emerald-300 px-2.5 py-1 rounded-lg font-medium">
+              <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Road Snapped (60fps)</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-slate-900/90 backdrop-blur px-2.5 py-1 rounded-lg border border-slate-800 text-slate-300">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <span>{secondsAgo < 5 ? 'Realtime' : `${secondsAgo}s delay`}</span>
+            </div>
+          )}
         </div>
       </div>
 

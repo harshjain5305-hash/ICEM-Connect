@@ -123,6 +123,7 @@ describe('LiveRideTrackingMap Component', () => {
     expect(screen.getByText(/HOST 38kph/i)).toBeInTheDocument();
     expect(screen.getByText(/Speed: 38 km\/h/i)).toBeInTheDocument();
     expect(screen.getByText(/GPS Precision: ±10m/i)).toBeInTheDocument();
+    expect(screen.getByText(/Road Snapped \(60fps\)/i)).toBeInTheDocument();
   });
 
   it('displays green tick and PASSED badge when rider passes waypoint during riding', () => {
