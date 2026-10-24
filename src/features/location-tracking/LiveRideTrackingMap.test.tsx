@@ -124,4 +124,22 @@ describe('LiveRideTrackingMap Component', () => {
     expect(screen.getByText(/Speed: 38 km\/h/i)).toBeInTheDocument();
     expect(screen.getByText(/GPS Precision: ±10m/i)).toBeInTheDocument();
   });
+
+  it('displays green tick and PASSED badge when rider passes waypoint during riding', () => {
+    render(
+      <LiveRideTrackingMap
+        ride={mockRide}
+        liveLocation={mockLiveLocation}
+        isHost={false}
+      />
+    );
+
+    // Kiwale Chowk was reached -> displays green tick and PASSED
+    expect(screen.getByText('✓ PASSED')).toBeInTheDocument();
+    expect(screen.getByText(/✓ Kiwale Chowk/i)).toBeInTheDocument();
+
+    // Corridor Waypoint Progress Strip (Origin and Kiwale passed, ICEM remaining)
+    expect(screen.getByText(/Corridor Waypoints Progress/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 of 3 passed/i)).toBeInTheDocument();
+  });
 });

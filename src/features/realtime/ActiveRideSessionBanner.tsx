@@ -11,6 +11,8 @@ import {
   ChevronUp,
   MessageSquare,
   FastForward,
+  Check,
+  Milestone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -21,6 +23,7 @@ import { RiderGpsStatusCard } from '@/features/location-tracking/RiderGpsStatusC
 import { RideCoordinationChat } from '@/features/rides/RideCoordinationChat';
 import { liveLocationService } from '@/features/location-tracking/liveLocation.service';
 import { decodePolyline, calculateBearing } from '@/features/routes/polyline.utils';
+import { calculateWaypointProgress, type WaypointLike } from '@/features/routes/waypointProgress';
 import type { LiveLocationUpdate } from '@/features/location-tracking/location.types';
 import type { Ride } from '@/features/rides/ride.types';
 import type { StudentProfile } from '@/features/auth/auth.types';
@@ -146,6 +149,58 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
     if (ride.destination) pts.push([ride.destination.latitude, ride.destination.longitude]);
     return pts;
   }, [ride]);
+
+  // Waypoints progress tracking for live trip
+  const bannerWaypoints: WaypointLike[] = React.useMemo(() => {
+    if (ride.waypoints && ride.waypoints.length > 0) {
+      return [...ride.waypoints].sort((a, b) => a.sequence - b.sequence);
+    }
+    const fallback: WaypointLike[] = [];
+    if (ride.origin) {
+      fallback.push({
+        id: 'orig',
+        ride_id: ride.id,
+        sequence: 1,
+        latitude: ride.origin.latitude,
+        longitude: ride.origin.longitude,
+        label: ride.origin.name,
+        type: 'ORIGIN' as const,
+        distance_from_start_meters: 0,
+      });
+    }
+    if (ride.destination) {
+      fallback.push({
+        id: 'dest',
+        ride_id: ride.id,
+        sequence: 2,
+        latitude: ride.destination.latitude,
+        longitude: ride.destination.longitude,
+        label: ride.destination.name,
+        type: 'DESTINATION' as const,
+        distance_from_start_meters: null,
+      });
+    }
+    return fallback;
+  }, [ride]);
+
+  const [persistentPassedSequences, setPersistentPassedSequences] = useState<Set<number>>(new Set());
+
+  const waypointProgress = React.useMemo(() => {
+    return calculateWaypointProgress({
+      waypoints: bannerWaypoints,
+      coordinates: routeCoordinates,
+      currentLocation: effectiveLocation,
+      isRideActive,
+      isRideCompleted: ride.status === 'COMPLETED',
+      previouslyPassedSequences: persistentPassedSequences,
+    });
+  }, [bannerWaypoints, routeCoordinates, effectiveLocation, isRideActive, ride.status, persistentPassedSequences]);
+
+  useEffect(() => {
+    if (waypointProgress.passedSequences.size > persistentPassedSequences.size) {
+      setPersistentPassedSequences(new Set(waypointProgress.passedSequences));
+    }
+  }, [waypointProgress.passedSequences, persistentPassedSequences.size]);
 
   const stopSimulation = useCallback(() => {
     if (simTimerRef.current) {
@@ -466,6 +521,52 @@ export const ActiveRideSessionBanner: React.FC<ActiveRideSessionBannerProps> = (
             isHost={isHost}
             onRefreshLocation={handleManualRefresh}
           />
+        </div>
+      )}
+
+      {/* COMPACT WAYPOINT PROGRESS STRIP (When map is collapsed during active trip) */}
+      {isRideActive && bannerWaypoints.length > 0 && !showLiveMap && (
+        <div className="mt-3 bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+              <Milestone className="w-3.5 h-3.5 text-[#00A2A5]" />
+              <span>Waypoints Passed</span>
+            </span>
+            <span className="text-[11px] font-bold text-emerald-400">
+              {waypointProgress.passedCount} of {waypointProgress.totalCount} Passed ({waypointProgress.progressPercentage}%)
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] no-scrollbar">
+            {bannerWaypoints.map((wp, idx) => {
+              const isPassed =
+                persistentPassedSequences.has(wp.sequence) ||
+                waypointProgress.passedSequences.has(wp.sequence);
+              const isActive = waypointProgress.activeSequence === wp.sequence;
+
+              return (
+                <div
+                  key={wp.id || idx}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] whitespace-nowrap ${
+                    isPassed
+                      ? 'bg-emerald-950/50 border-emerald-500/50 text-emerald-300 font-semibold shadow-xs'
+                      : isActive
+                      ? 'bg-cyan-950/50 border-cyan-500/50 text-cyan-300 font-medium ring-1 ring-cyan-500/30 animate-pulse'
+                      : 'bg-slate-800/60 border-slate-700/60 text-slate-400'
+                  }`}
+                >
+                  {isPassed ? (
+                    <Check className="w-3 h-3 text-emerald-400 stroke-[2.5]" />
+                  ) : isActive ? (
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                  )}
+                  <span>{wp.label.split('(')[0].trim()}</span>
+                  {isPassed && <span className="text-[10px] text-emerald-400 font-bold ml-0.5">✓</span>}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

@@ -63,6 +63,13 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
   const statusMeta = RIDE_STATUS_METADATA[currentRide.status];
   const isTripActive = currentRide.status === 'ACTIVE';
 
+  const completedPassedSequences = React.useMemo(() => {
+    if (currentRide.status === 'COMPLETED' && currentRide.waypoints) {
+      return new Set(currentRide.waypoints.map((w) => w.sequence));
+    }
+    return undefined;
+  }, [currentRide.status, currentRide.waypoints]);
+
   const handleStatusTransition = async (targetStatus: RideStatus) => {
     if (!user) return;
     setIsActionLoading(true);
@@ -537,7 +544,10 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
 
                 {currentRide.waypoints && currentRide.waypoints.length > 2 && (
                   <div className="pt-3 border-t border-border/60">
-                    <WaypointSequenceList waypoints={currentRide.waypoints} />
+                    <WaypointSequenceList
+                      waypoints={currentRide.waypoints}
+                      passedSequences={completedPassedSequences}
+                    />
                   </div>
                 )}
               </div>

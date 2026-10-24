@@ -3,6 +3,7 @@ import type { Ride } from '@/features/rides/ride.types';
 import type { LiveLocationUpdate, LocationFreshness } from './location.types';
 import { calculateLocationFreshness } from './location.types';
 import { decodePolyline } from '@/features/routes/polyline.utils';
+import { calculateWaypointProgress, type WaypointLike } from '@/features/routes/waypointProgress';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import {
@@ -17,6 +18,8 @@ import {
   ZoomOut,
   Maximize2,
   Crosshair,
+  Check,
+  Milestone,
 } from 'lucide-react';
 
 export interface LiveRideTrackingMapProps {
@@ -88,10 +91,79 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
   const originCoord = coordinates[0];
   const destCoord = coordinates[coordinates.length - 1];
 
+  // Monotonic persistence of passed waypoints
+  const [persistentPassedSequences, setPersistentPassedSequences] = useState<Set<number>>(new Set());
+
+  // Form structured ordered waypoint sequence
+  const allSortedWaypoints = useMemo(() => {
+    const list: WaypointLike[] = [];
+    const hasOrigin = ride.waypoints?.some((w) => w.type === 'ORIGIN');
+    const hasDest = ride.waypoints?.some((w) => w.type === 'DESTINATION');
+
+    if (!hasOrigin && ride.origin) {
+      list.push({
+        id: 'orig',
+        ride_id: ride.id,
+        sequence: 0,
+        latitude: ride.origin.latitude,
+        longitude: ride.origin.longitude,
+        label: ride.origin.name,
+        type: 'ORIGIN',
+        distance_from_start_meters: 0,
+      });
+    }
+
+    if (ride.waypoints) {
+      list.push(...ride.waypoints);
+    }
+
+    if (!hasDest && ride.destination) {
+      list.push({
+        id: 'dest',
+        ride_id: ride.id,
+        sequence: 9999,
+        latitude: ride.destination.latitude,
+        longitude: ride.destination.longitude,
+        label: ride.destination.name,
+        type: 'DESTINATION',
+        distance_from_start_meters: null,
+      });
+    }
+
+    return list.sort((a, b) => a.sequence - b.sequence);
+  }, [ride]);
+
+  // Evaluate real-time waypoint progression
+  const waypointProgress = useMemo(() => {
+    return calculateWaypointProgress({
+      waypoints: allSortedWaypoints,
+      coordinates,
+      currentLocation: liveLocation,
+      isRideActive: ride.status === 'ACTIVE',
+      isRideCompleted: ride.status === 'COMPLETED',
+      previouslyPassedSequences: persistentPassedSequences,
+    });
+  }, [allSortedWaypoints, coordinates, liveLocation, ride.status, persistentPassedSequences]);
+
+  // Monotonically accumulate passed waypoints
+  useEffect(() => {
+    if (waypointProgress.passedSequences.size > persistentPassedSequences.size) {
+      setPersistentPassedSequences(new Set(waypointProgress.passedSequences));
+    }
+  }, [waypointProgress.passedSequences, persistentPassedSequences.size]);
+
   // Project geographic coordinates into SVG viewBox (500 x 280)
   // Stable bounding box: anchored exclusively to route corridor coordinates so the map
   // does not jitter or rescale when host GPS updates.
-  const { pathData, projectedWaypoints, projectedOrigin, projectedDest, projectedHost } = useMemo(() => {
+  const {
+    pathData,
+    projectedWaypoints,
+    projectedOrigin,
+    projectedDest,
+    projectedHost,
+    isOriginPassed,
+    isDestPassed,
+  } = useMemo(() => {
     const width = 500;
     const height = 280;
     const padding = 50;
@@ -103,6 +175,8 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
         projectedOrigin: null,
         projectedDest: null,
         projectedHost: null,
+        isOriginPassed: false,
+        isDestPassed: false,
       };
     }
 
@@ -140,14 +214,36 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
     // 2. Project intermediate waypoints (excluding origin and destination)
     const wps = (ride.waypoints || [])
       .filter((wp) => wp.type !== 'ORIGIN' && wp.type !== 'DESTINATION')
-      .map((wp) => ({
-        ...wp,
-        ...project(wp.latitude, wp.longitude),
-      }));
+      .map((wp) => {
+        const isPassed =
+          persistentPassedSequences.has(wp.sequence) ||
+          waypointProgress.passedSequences.has(wp.sequence);
+        const isActive = waypointProgress.activeSequence === wp.sequence;
+        return {
+          ...wp,
+          ...project(wp.latitude, wp.longitude),
+          isPassed,
+          isActive,
+        };
+      });
 
     // 3. Project dynamic Origin & Destination pins
     const projOrig = originCoord ? project(originCoord[0], originCoord[1]) : null;
     const projDst = destCoord ? project(destCoord[0], destCoord[1]) : null;
+
+    const originWp =
+      allSortedWaypoints.find((w) => w.type === 'ORIGIN') || allSortedWaypoints[0];
+    const destWp =
+      allSortedWaypoints.find((w) => w.type === 'DESTINATION') ||
+      allSortedWaypoints[allSortedWaypoints.length - 1];
+    const isOrigPassed = originWp
+      ? persistentPassedSequences.has(originWp.sequence) ||
+        waypointProgress.passedSequences.has(originWp.sequence)
+      : false;
+    const isDstPassed = destWp
+      ? persistentPassedSequences.has(destWp.sequence) ||
+        waypointProgress.passedSequences.has(destWp.sequence)
+      : ride.status === 'COMPLETED';
 
     // 4. Project live host marker with soft edge-clamping
     let hostPt: { x: number; y: number; isOffScreen: boolean } | null = null;
@@ -166,8 +262,20 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
       projectedOrigin: projOrig,
       projectedDest: projDst,
       projectedHost: hostPt,
+      isOriginPassed: isOrigPassed,
+      isDestPassed: isDstPassed,
     };
-  }, [coordinates, liveLocation, ride.waypoints, originCoord, destCoord]);
+  }, [
+    coordinates,
+    liveLocation,
+    ride.waypoints,
+    originCoord,
+    destCoord,
+    persistentPassedSequences,
+    waypointProgress,
+    allSortedWaypoints,
+    ride.status,
+  ]);
 
   // Zoom handlers
   const handleZoomIn = () => {
@@ -455,29 +563,111 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
               </>
             )}
 
-            {/* SEQUENCED INTERMEDIATE WAYPOINTS */}
+            {/* SEQUENCED INTERMEDIATE WAYPOINTS WITH LIVE PASSING STATE */}
             {projectedWaypoints.map((wp, idx) => (
               <g key={wp.id || idx} className="cursor-pointer">
-                <circle cx={wp.x} cy={wp.y} r="4.5" fill="#1E293B" stroke="#F1F5F9" strokeWidth="1.5" />
+                {wp.isPassed ? (
+                  <>
+                    {/* Pulsing Emerald Halo */}
+                    <circle cx={wp.x} cy={wp.y} r="10" fill="#10B981" opacity="0.3" className="animate-pulse" />
+                    {/* Emerald Green Node */}
+                    <circle cx={wp.x} cy={wp.y} r="6.5" fill="#10B981" stroke="#FFFFFF" strokeWidth="1.5" />
+                    {/* White Checkmark (Green Tick) */}
+                    <path
+                      d={`M ${wp.x - 3} ${wp.y} L ${wp.x - 1} ${wp.y + 2.5} L ${wp.x + 3.5} ${wp.y - 2.5}`}
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    {/* Passed Badge Pill */}
+                    <rect
+                      x={wp.x - 22}
+                      y={wp.y - 22}
+                      width="44"
+                      height="12"
+                      rx="3"
+                      fill="rgba(16, 185, 129, 0.95)"
+                      stroke="#FFFFFF"
+                      strokeWidth="0.5"
+                    />
+                    <text
+                      x={wp.x}
+                      y={wp.y - 13}
+                      textAnchor="middle"
+                      fontSize="7.5"
+                      fill="#FFFFFF"
+                      fontWeight="700"
+                      className="pointer-events-none select-none"
+                    >
+                      ✓ PASSED
+                    </text>
+                  </>
+                ) : wp.isActive ? (
+                  <>
+                    {/* Active approaching node pulse */}
+                    <circle cx={wp.x} cy={wp.y} r="9" fill="#00A2A5" opacity="0.4" className="animate-pulse" />
+                    <circle cx={wp.x} cy={wp.y} r="5.5" fill="#00A2A5" stroke="#FFFFFF" strokeWidth="1.5" />
+                    <text
+                      x={wp.x}
+                      y={wp.y + 2.5}
+                      textAnchor="middle"
+                      fontSize="7"
+                      fill="#FFFFFF"
+                      fontWeight="bold"
+                      className="pointer-events-none select-none"
+                    >
+                      {wp.sequence}
+                    </text>
+                  </>
+                ) : (
+                  <>
+                    <circle cx={wp.x} cy={wp.y} r="4.5" fill="#1E293B" stroke="#F1F5F9" strokeWidth="1.5" />
+                    <text
+                      x={wp.x}
+                      y={wp.y + 2.5}
+                      textAnchor="middle"
+                      fontSize="6.5"
+                      fill="#94A3B8"
+                      fontWeight="600"
+                      className="pointer-events-none select-none"
+                    >
+                      {wp.sequence}
+                    </text>
+                  </>
+                )}
+
+                {/* Waypoint Label */}
                 <text
                   x={wp.x}
-                  y={wp.y - 8}
+                  y={wp.isPassed ? wp.y + 14 : wp.y - 9}
                   textAnchor="middle"
                   fontSize="8.5"
-                  fill="#CBD5E1"
-                  fontWeight="500"
+                  fill={wp.isPassed ? '#34D399' : wp.isActive ? '#38BDF8' : '#CBD5E1'}
+                  fontWeight={wp.isPassed || wp.isActive ? '700' : '500'}
                   className="pointer-events-none select-none drop-shadow"
                 >
-                  {wp.label.split('(')[0].trim()}
+                  {wp.isPassed ? `✓ ${wp.label.split('(')[0].trim()}` : wp.label.split('(')[0].trim()}
                 </text>
               </g>
             ))}
 
-            {/* DYNAMIC ORIGIN PIN (Calculated from true origin coordinates) */}
+            {/* DYNAMIC ORIGIN PIN */}
             {projectedOrigin && (
               <g className="cursor-pointer">
                 <circle cx={projectedOrigin.x} cy={projectedOrigin.y} r="11" fill="#10B981" opacity="0.3" className="animate-pulse" />
                 <circle cx={projectedOrigin.x} cy={projectedOrigin.y} r="6.5" fill="#10B981" stroke="#FFFFFF" strokeWidth="2" />
+                {isOriginPassed && (
+                  <path
+                    d={`M ${projectedOrigin.x - 3} ${projectedOrigin.y} L ${projectedOrigin.x - 1} ${projectedOrigin.y + 2.5} L ${projectedOrigin.x + 3.5} ${projectedOrigin.y - 2.5}`}
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
                 <rect
                   x={projectedOrigin.x - 38}
                   y={projectedOrigin.y + 9}
@@ -502,11 +692,35 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
               </g>
             )}
 
-            {/* DYNAMIC DESTINATION PIN (Calculated from true destination coordinates) */}
+            {/* DYNAMIC DESTINATION PIN */}
             {projectedDest && (
               <g className="cursor-pointer">
-                <circle cx={projectedDest.x} cy={projectedDest.y} r="11" fill="#E85C0D" opacity="0.3" className="animate-pulse" />
-                <circle cx={projectedDest.x} cy={projectedDest.y} r="6.5" fill="#E85C0D" stroke="#FFFFFF" strokeWidth="2" />
+                <circle
+                  cx={projectedDest.x}
+                  cy={projectedDest.y}
+                  r="11"
+                  fill={isDestPassed ? '#10B981' : '#E85C0D'}
+                  opacity="0.3"
+                  className="animate-pulse"
+                />
+                <circle
+                  cx={projectedDest.x}
+                  cy={projectedDest.y}
+                  r="6.5"
+                  fill={isDestPassed ? '#10B981' : '#E85C0D'}
+                  stroke="#FFFFFF"
+                  strokeWidth="2"
+                />
+                {isDestPassed && (
+                  <path
+                    d={`M ${projectedDest.x - 3} ${projectedDest.y} L ${projectedDest.x - 1} ${projectedDest.y + 2.5} L ${projectedDest.x + 3.5} ${projectedDest.y - 2.5}`}
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
                 <rect
                   x={projectedDest.x - 38}
                   y={projectedDest.y - 23}
@@ -514,7 +728,7 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
                   height="15"
                   rx="4"
                   fill="rgba(15, 23, 42, 0.9)"
-                  stroke="#E85C0D"
+                  stroke={isDestPassed ? '#10B981' : '#E85C0D'}
                   strokeWidth="0.8"
                 />
                 <text
@@ -619,6 +833,69 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
           </div>
         </div>
       </div>
+
+      {/* CORRIDOR WAYPOINTS PROGRESS BAR & CHIPS */}
+      {allSortedWaypoints.length > 0 && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5 font-semibold text-slate-200">
+              <Milestone className="w-3.5 h-3.5 text-[#00A2A5]" />
+              <span>Corridor Waypoints Progress</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400">
+                {waypointProgress.passedCount} of {waypointProgress.totalCount} passed
+              </span>
+              <span className="font-bold text-emerald-400 text-xs">
+                {waypointProgress.progressPercentage}%
+              </span>
+            </div>
+          </div>
+
+          {/* Progress Bar Fill */}
+          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 via-[#00A2A5] to-teal-400 transition-all duration-500 ease-out rounded-full"
+              style={{ width: `${waypointProgress.progressPercentage}%` }}
+            />
+          </div>
+
+          {/* Waypoint Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar text-[11px]">
+            {allSortedWaypoints.map((wp, idx) => {
+              const isPassed =
+                persistentPassedSequences.has(wp.sequence) ||
+                waypointProgress.passedSequences.has(wp.sequence);
+              const isActive = waypointProgress.activeSequence === wp.sequence;
+
+              return (
+                <div
+                  key={wp.id || idx}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border whitespace-nowrap transition-all ${
+                    isPassed
+                      ? 'bg-emerald-950/50 border-emerald-500/50 text-emerald-300 font-semibold shadow-xs'
+                      : isActive
+                      ? 'bg-cyan-950/50 border-cyan-500/50 text-cyan-300 font-semibold ring-1 ring-cyan-500/30 animate-pulse'
+                      : 'bg-slate-800/60 border-slate-700/60 text-slate-400'
+                  }`}
+                >
+                  {isPassed ? (
+                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-white">
+                      <Check className="w-2.5 h-2.5 stroke-[3]" />
+                    </span>
+                  ) : isActive ? (
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                  )}
+                  <span>{wp.label.split('(')[0].trim()}</span>
+                  {isPassed && <span className="text-[10px] text-emerald-400 font-bold ml-0.5">✓</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* SAFETY & TRANSIENT STORAGE NOTICE */}
       <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/60">
