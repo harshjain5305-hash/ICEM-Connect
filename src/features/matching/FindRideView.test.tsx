@@ -230,7 +230,7 @@ describe('FindRideView Component (Phase 5)', () => {
 
     // Initial corridor should automatically trigger search
     await waitFor(() => {
-      expect(screen.getByText(/Compatible Rides Found/i)).toBeInTheDocument();
+      expect(screen.getByText(/^Compatible Rides Found/i)).toBeInTheDocument();
     });
   });
 
@@ -265,6 +265,38 @@ describe('FindRideView Component (Phase 5)', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Route Alert Active/i)).toBeInTheDocument();
+    });
+  });
+
+  it('displays Daily Commuter (Mon-Fri) badge for rides generated from a recurring routine', async () => {
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    await rideService.createRide(
+      'host_daily_1',
+      {
+        origin_location_id: 'loc_akurdi_station',
+        destination_location_id: 'loc_icem_campus',
+        departure_date: today,
+        departure_time: '08:30',
+        total_seats: 1,
+        vehicle_type: 'SCOOTER',
+        note: '⚡ Daily Commuter Routine: Mon–Fri Campus Commute',
+      },
+      false
+    );
+
+    render(
+      <FindRideView
+        initialCorridor={{
+          pickupLocationId: 'loc_akurdi_station',
+          dropLocationId: 'loc_icem_campus',
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Commuter (Mon–Fri)')).toBeInTheDocument();
     });
   });
 });

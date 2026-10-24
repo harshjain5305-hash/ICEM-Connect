@@ -46,6 +46,7 @@ describe('OfferRideForm Component (Phase 3)', () => {
     expect(screen.getByText('1. Route Corridor')).toBeInTheDocument();
     expect(screen.getByText('2. Schedule & Timing')).toBeInTheDocument();
     expect(screen.getByText('3. Vehicle & Available Seats')).toBeInTheDocument();
+    expect(screen.getByText('Repeat Mon–Fri (Daily Commute Routine)')).toBeInTheDocument();
     expect(screen.getByText('Publish Ride')).toBeInTheDocument();
     expect(screen.getByText('Save as Draft')).toBeInTheDocument();
   });
@@ -87,6 +88,7 @@ describe('OfferRideForm Component (Phase 3)', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Ride Published Successfully!')).toBeInTheDocument();
+      expect(screen.getByText(/Share Ride to Batch WhatsApp Group/i)).toBeInTheDocument();
     });
 
     expect(onSuccessMock).toHaveBeenCalled();

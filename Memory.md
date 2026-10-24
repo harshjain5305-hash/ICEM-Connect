@@ -1218,6 +1218,32 @@ These are documented requirements only. They must not be treated as implemented 
 
 ## Changelog
 
+### 2026-10-25 — Recurring Commute Routines (Mon–Fri), 1-Click WhatsApp Broadcast & Daily Retention Engine Implemented & Verified
+
+State:
+- Solved the daily repeat-open retention problem and form entry fatigue for daily campus commuters:
+  1. **Recurring Commute Routines ("Set Once, Commute All Semester"):**
+     - Defined `RecurringSchedule` types and domain layer in [`src/features/rides/recurringSchedule.types.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/recurringSchedule.types.ts).
+     - Implemented [`src/features/rides/recurringSchedule.service.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/recurringSchedule.service.ts) managing schedule creation, automated 7-day weekday ride materialization (`autoMaterializeUpcomingRides`), date pausing (`pauseScheduleDate`), date resuming (`resumeScheduleDate`), active toggling, and schedule deletion.
+     - Automatically attaches `⚡ Daily Commuter Routine` badge note to all materialized weekday rides.
+     - Added "Repeat Mon–Fri (Daily Commute Routine)" checkbox in [`src/features/rides/OfferRideForm.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/OfferRideForm.tsx) (enabled by default) so hosts only configure their corridor once.
+     - Added prominent **Daily Commute Routine** management card in [`src/features/rides/MyRidesView.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/MyRidesView.tsx) with 1-tap "Skip Tomorrow" / "Resume Tomorrow" toggles and full routine pause controls.
+  2. **1-Click WhatsApp Batch Broadcast Bridge:**
+     - Created [`src/features/rides/commuteShare.utils.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/commuteShare.utils.ts) with `buildWhatsAppShareText`, `generateWhatsAppShareUrl`, and `triggerWhatsAppShare` using native Web Share API with instant fallback to `wa.me/?text=...`.
+     - Added prominent `[Share Ride to Batch WhatsApp Group]` button on the ride publish confirmation screen in `OfferRideForm.tsx`.
+     - Added 1-tap `[WhatsApp]` broadcast buttons on the Daily Commute Routine card and on individual hosted ride cards in `MyRidesView.tsx`.
+  3. **Verified Daily Commuter Trust Badges:**
+     - In [`src/features/matching/FindRideView.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/matching/FindRideView.tsx), added `[⚡ Daily Commuter (Mon–Fri)]` trust badge to candidate match cards, providing high reassurance to daily passengers that their ride is an established routine rather than an ad-hoc one-off.
+- Tested and verified:
+  - Created [`src/features/rides/recurringSchedule.service.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/recurringSchedule.service.test.ts) (4 unit tests).
+  - Created [`src/features/rides/commuteShare.utils.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/commuteShare.utils.test.ts) (3 unit tests).
+  - Expanded [`src/features/rides/OfferRideForm.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/OfferRideForm.test.tsx) (+2 assertions).
+  - Expanded [`src/features/rides/MyRidesView.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/MyRidesView.test.tsx) (+1 test).
+  - Expanded [`src/features/matching/FindRideView.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/matching/FindRideView.test.tsx) (+1 test).
+  - Verified test suite: **260/260 tests passing across 42 test suites** (`npm test`).
+  - Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+  - Verified production build: **clean bundle generated in 5.54s** (`npm run build`).
+
 ### 2026-10-24 — Public Read-Only Browsing, 1-Click Corridors & Route Alerts Implemented & Verified
 
 State:

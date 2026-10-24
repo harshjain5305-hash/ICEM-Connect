@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MyRidesView } from './MyRidesView';
 import { rideService } from './ride.service';
+import { recurringScheduleService } from './recurringSchedule.service';
 import * as useAuthModule from '@/features/auth/useAuth';
 
 describe('MyRidesView Component (Phase 3)', () => {
@@ -160,6 +161,26 @@ describe('MyRidesView Component (Phase 3)', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
       expect(screen.getByText('Ride Details')).toBeInTheDocument();
       expect(screen.getByText('Manage Ride Lifecycle')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Daily Commute Routine card and WhatsApp broadcast actions', async () => {
+    await recurringScheduleService.createSchedule(mockUser.id, {
+      origin_location_id: 'loc_akurdi_station',
+      destination_location_id: 'loc_icem_campus',
+      departure_time: '08:15',
+      total_seats: 1,
+      vehicle_type: 'SCOOTER',
+      note: 'Morning MCA lecture commute',
+    });
+
+    render(<MyRidesView />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Commute Routine (Mon–Fri)')).toBeInTheDocument();
+      expect(screen.getByText('Active Routine')).toBeInTheDocument();
+      expect(screen.getByText('Broadcast on WhatsApp')).toBeInTheDocument();
+      expect(screen.getByText(/Skip Tomorrow/i)).toBeInTheDocument();
     });
   });
 });

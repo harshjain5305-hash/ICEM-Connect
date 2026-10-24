@@ -30,6 +30,7 @@ import {
   Bell,
   Shield,
   LogIn,
+  Repeat,
 } from 'lucide-react';
 
 export interface FindRideViewProps {
@@ -612,6 +613,7 @@ const CandidateMatchCard: React.FC<CandidateMatchCardProps> = ({
   onRequestSeat,
 }) => {
   const { ride, pickupWaypoint, dropWaypoint, matchScore, scoreBreakdown } = candidate;
+  const isDailyCommuter = Boolean(ride.note && ride.note.includes('Daily Commuter Routine'));
 
   return (
     <div
@@ -619,7 +621,7 @@ const CandidateMatchCard: React.FC<CandidateMatchCardProps> = ({
       className="group relative cursor-pointer rounded-xl border border-border bg-card p-4 transition-all duration-200 hover:border-primary/50 hover:shadow-md space-y-3"
     >
       {/* TOP ROW: MATCH SCORE + SCHEDULE */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Badge
             variant={matchScore >= 90 ? 'success' : matchScore >= 75 ? 'cyan' : 'secondary'}
@@ -627,6 +629,11 @@ const CandidateMatchCard: React.FC<CandidateMatchCardProps> = ({
           >
             {matchScore}% Match
           </Badge>
+          {isDailyCommuter && (
+            <Badge variant="cyan" className="gap-1 font-semibold text-[11px] bg-[#00A2A5]/15 text-[#00A2A5] border-[#00A2A5]/30">
+              <Repeat className="h-3 w-3" /> Daily Commuter (Mon–Fri)
+            </Badge>
+          )}
           <span className="text-[11px] text-muted-foreground hidden sm:inline">
             Route: {scoreBreakdown.routeAlignmentScore}/40 &bull; Time: {scoreBreakdown.timeProximityScore}/30
           </span>

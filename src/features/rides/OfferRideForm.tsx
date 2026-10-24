@@ -9,6 +9,8 @@ import { RouteMapPreview } from '@/features/routes/RouteMapPreview';
 import { WaypointSequenceList } from '@/features/routes/WaypointSequenceList';
 import { routeService } from '@/features/routes/route.service';
 import type { CalculatedRoute } from '@/features/routes/route.types';
+import { recurringScheduleService } from './recurringSchedule.service';
+import { triggerWhatsAppShare, getRideShareData } from './commuteShare.utils';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -26,6 +28,8 @@ import {
   Send,
   AlertCircle,
   HelpCircle,
+  Repeat,
+  Share2,
 } from 'lucide-react';
 
 export interface OfferRideFormProps {
@@ -67,6 +71,7 @@ export const OfferRideForm: React.FC<OfferRideFormProps> = ({
   const [vehicleType, setVehicleType] = useState<VehicleType>('SCOOTER');
   const [totalSeats, setTotalSeats] = useState<number>(1);
   const [note, setNote] = useState<string>('');
+  const [isRecurring, setIsRecurring] = useState<boolean>(true);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isDraftSubmitting, setIsDraftSubmitting] = useState<boolean>(false);
@@ -181,6 +186,24 @@ export const OfferRideForm: React.FC<OfferRideFormProps> = ({
 
       const ride = await rideService.createRide(user.id, payload, asDraft);
       setCreatedRide(ride);
+
+      // If host checked "Repeat Mon-Fri", auto-create recurring schedule
+      if (isRecurring && !asDraft) {
+        try {
+          await recurringScheduleService.createSchedule(user.id, {
+            origin_location_id: origin.id,
+            destination_location_id: destination.id,
+            departure_time: departureTime,
+            total_seats: totalSeats,
+            vehicle_type: vehicleType,
+            note: note.trim() || null,
+            days_of_week: [1, 2, 3, 4, 5],
+          });
+        } catch (schedErr) {
+          console.warn('Failed to auto-create recurring commute schedule:', schedErr);
+        }
+      }
+
       if (onSuccess) {
         onSuccess(ride);
       }
@@ -270,6 +293,18 @@ export const OfferRideForm: React.FC<OfferRideFormProps> = ({
               </div>
             )}
           </div>
+
+          {!isDraft && (
+            <div className="pt-1">
+              <Button
+                type="button"
+                className="w-full gap-2 bg-[#25D366] hover:bg-[#20BA5A] text-white font-semibold py-2.5 shadow-xs"
+                onClick={() => triggerWhatsAppShare(getRideShareData(createdRide))}
+              >
+                <Share2 className="h-4 w-4" /> Share Ride to Batch WhatsApp Group
+              </Button>
+            </div>
+          )}
         </CardContent>
 
         <CardFooter className="flex flex-col sm:flex-row gap-2 pt-0">
@@ -417,6 +452,26 @@ export const OfferRideForm: React.FC<OfferRideFormProps> = ({
                 required
               />
             </div>
+          </div>
+
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2 mt-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isRecurring}
+                onChange={(e) => setIsRecurring(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-primary text-primary focus:ring-primary"
+              />
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 font-semibold text-xs text-foreground">
+                  <Repeat className="h-3.5 w-3.5 text-[#00A2A5]" />
+                  <span>Repeat Mon–Fri (Daily Commute Routine)</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Automatically publishes your empty seat for upcoming weekdays so you don&apos;t have to fill this form every morning!
+                </p>
+              </div>
+            </label>
           </div>
         </div>
 

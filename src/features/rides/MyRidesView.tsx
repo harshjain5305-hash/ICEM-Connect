@@ -7,6 +7,9 @@ import { RideDetailModal } from './RideDetailModal';
 import { MyRequestsView } from '@/features/requests/MyRequestsView';
 import { requestService } from '@/features/requests/request.service';
 import type { JoinRequest } from '@/features/requests/request.types';
+import { recurringScheduleService } from './recurringSchedule.service';
+import type { RecurringSchedule } from './recurringSchedule.types';
+import { triggerWhatsAppShare, getRideShareData } from './commuteShare.utils';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -24,10 +27,23 @@ import {
   ExternalLink,
   AlertCircle,
   Trash2,
+  Repeat,
+  Share2,
+  PauseCircle,
+  PlayCircle,
 } from 'lucide-react';
 import { SwipeableItem } from '@/components/ui/SwipeableItem';
 
 export type RideFilterCategory = 'all' | 'active' | 'drafts' | 'past';
+
+function getTomorrowString(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 export interface MyRidesViewProps {
   onOfferNewClick?: () => void;
@@ -38,6 +54,7 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
   const { user, profile } = useAuth();
   const [mainTab, setMainTab] = useState<'hosted' | 'requests'>('hosted');
   const [rides, setRides] = useState<Ride[]>([]);
+  const [schedules, setSchedules] = useState<RecurringSchedule[]>([]);
   const [requestsMap, setRequestsMap] = useState<Record<string, JoinRequest[]>>({});
   const [studentRequestsCount, setStudentRequestsCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -50,8 +67,12 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
     if (!user) return;
     setIsLoading(true);
     try {
-      const data = await rideService.listHostRides(user.id);
+      const [data, scheds] = await Promise.all([
+        rideService.listHostRides(user.id),
+        recurringScheduleService.listSchedulesByHost(user.id).catch(() => []),
+      ]);
       setRides(data);
+      setSchedules(scheds);
 
       // Concurrently fetch requests for every ride hosted
       const reqMap: Record<string, JoinRequest[]> = {};
@@ -84,6 +105,39 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
   useEffect(() => {
     fetchRides();
   }, [fetchRides]);
+
+  const handleToggleSchedule = async (scheduleId: string, currentActive: boolean) => {
+    try {
+      await recurringScheduleService.toggleActive(scheduleId, !currentActive);
+      await fetchRides();
+    } catch (err) {
+      console.error('Failed to toggle schedule:', err);
+    }
+  };
+
+  const handlePauseTomorrow = async (schedule: RecurringSchedule) => {
+    const tomorrow = getTomorrowString();
+    const isPaused = schedule.paused_dates.includes(tomorrow);
+    try {
+      if (isPaused) {
+        await recurringScheduleService.resumeScheduleDate(schedule.id, tomorrow);
+      } else {
+        await recurringScheduleService.pauseScheduleDate(schedule.id, tomorrow);
+      }
+      await fetchRides();
+    } catch (err) {
+      console.error('Failed to update paused date:', err);
+    }
+  };
+
+  const handleDeleteSchedule = async (scheduleId: string) => {
+    try {
+      await recurringScheduleService.deleteSchedule(scheduleId);
+      await fetchRides();
+    } catch (err) {
+      console.error('Failed to delete schedule:', err);
+    }
+  };
 
   const handleRideUpdated = (updatedRide: Ride) => {
     setRides((prev) =>
@@ -279,6 +333,123 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
               )}
             </div>
           </div>
+
+          {/* RECURRING COMMUTE ROUTINES (PILLAR 1 & 2: DAILY HABIT ENGINE) */}
+          {schedules.length > 0 && (
+            <div className="space-y-3">
+              {schedules.map((schedule) => {
+                const tomorrow = getTomorrowString();
+                const isTomorrowPaused = schedule.paused_dates.includes(tomorrow);
+
+                return (
+                  <div
+                    key={schedule.id}
+                    className="rounded-xl border border-primary/20 bg-linear-to-r from-primary/10 via-primary/5 to-transparent p-4 space-y-3 shadow-xs"
+                  >
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/20 text-primary">
+                          <Repeat className="h-4 w-4 text-[#00A2A5]" />
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-foreground">
+                              Daily Commute Routine (Mon–Fri)
+                            </span>
+                            <Badge variant={schedule.is_active ? 'cyan' : 'outline'} className="text-[10px]">
+                              {schedule.is_active ? 'Active Routine' : 'Paused Routine'}
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Auto-publishes weekday seats &bull; Departs daily at{' '}
+                            <strong className="text-foreground">{schedule.departure_time}</strong>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            triggerWhatsAppShare({
+                              originName: schedule.origin?.name || 'ICEM Campus',
+                              destinationName: schedule.destination?.name || 'Talegaon / PCMC',
+                              departureDate: 'Every Mon–Fri',
+                              departureTime: schedule.departure_time,
+                              availableSeats: schedule.total_seats,
+                              vehicleType: schedule.vehicle_type,
+                              note: schedule.note || 'Regular daily campus commute',
+                            })
+                          }
+                          className="h-7 text-xs gap-1 border-[#25D366]/40 text-[#25D366] hover:bg-[#25D366]/10"
+                          title="Share commute routine to WhatsApp group"
+                        >
+                          <Share2 className="h-3 w-3" />
+                          <span>Broadcast on WhatsApp</span>
+                        </Button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSchedule(schedule.id)}
+                          title="Delete recurring routine"
+                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs font-semibold text-foreground bg-background/60 rounded-lg p-2 border border-border/60">
+                      <span className="truncate">{schedule.origin?.name || 'Pickup Origin'}</span>
+                      <ArrowRight className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <span className="truncate">{schedule.destination?.name || 'Destination'}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-border/40 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant={isTomorrowPaused ? 'outline' : 'secondary'}
+                          onClick={() => handlePauseTomorrow(schedule)}
+                          className={`h-7 text-xs gap-1.5 ${
+                            isTomorrowPaused
+                              ? 'border-amber-500/40 text-amber-600 bg-amber-500/10'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          {isTomorrowPaused ? (
+                            <>
+                              <PlayCircle className="h-3.5 w-3.5 text-amber-600" />
+                              <span>Resume Tomorrow ({tomorrow})</span>
+                            </>
+                          ) : (
+                            <>
+                              <PauseCircle className="h-3.5 w-3.5" />
+                              <span>Skip Tomorrow ({tomorrow})</span>
+                            </>
+                          )}
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleToggleSchedule(schedule.id, schedule.is_active)}
+                          className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          {schedule.is_active ? 'Pause Whole Routine' : 'Resume Routine'}
+                        </Button>
+                      </div>
+
+                      <span className="text-[11px] text-muted-foreground italic">
+                        {isTomorrowPaused ? 'Tomorrow paused' : 'Active for all upcoming weekdays'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* FILTER TABS */}
           <div className="flex overflow-x-auto border-b border-border gap-2 pb-1 scrollbar-none">
@@ -533,6 +704,22 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
 
                       {/* CONTEXTUAL ACTION BUTTONS */}
                       <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {!isDraft && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              triggerWhatsAppShare(getRideShareData(ride));
+                            }}
+                            className="h-7 text-xs gap-1 border-[#25D366]/40 text-[#25D366] hover:bg-[#25D366]/10"
+                            title="Share ride to college WhatsApp group"
+                          >
+                            <Share2 className="h-3 w-3" />
+                            <span className="hidden sm:inline">WhatsApp</span>
+                          </Button>
+                        )}
+
                         {isDraft && (
                           <Button
                             size="sm"
