@@ -44,13 +44,13 @@ describe('App Shell & Design System (Phase 0)', () => {
     expect(offerElements.length).toBeGreaterThan(0);
   });
 
-  it('renders Phase 0 Project Foundation verification card', async () => {
+  it('renders Popular Campus Commute Corridors and student commute features', async () => {
     await act(async () => {
       render(<App />);
     });
-    expect(screen.getByText(/Phase 0 — Project Foundation Status/i)).toBeInTheDocument();
-    expect(screen.getByText(/Indira Institutional Theme/i)).toBeInTheDocument();
-    expect(screen.getByText(/Supabase Backend Integration/i)).toBeInTheDocument();
+    expect(screen.getByText(/Popular Campus Commute Corridors/i)).toBeInTheDocument();
+    expect(screen.getByText(/Talegaon Station/i)).toBeInTheDocument();
+    expect(screen.getByText(/How ICEM Connect Works/i)).toBeInTheDocument();
   });
 
   it('renders with Indira ICEM brand palette and Electric Cyan accents', async () => {

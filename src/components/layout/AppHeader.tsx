@@ -1,6 +1,5 @@
 import React from 'react';
 import { Compass, ShieldCheck } from 'lucide-react';
-import { BackendStatusBadge } from '@/features/health/BackendStatusBadge';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 
 export const AppHeader: React.FC = () => {
@@ -37,7 +36,6 @@ export const AppHeader: React.FC = () => {
 
         <div className="flex items-center gap-2 sm:gap-3">
           <NotificationBell />
-          <BackendStatusBadge />
         </div>
       </div>
     </header>

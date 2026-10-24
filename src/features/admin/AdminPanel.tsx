@@ -260,7 +260,7 @@ const AdminPanelContent: React.FC = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Platform Operational Guardrails (Rules.md §24)</CardTitle>
+              <CardTitle className="text-sm">Platform Operational Guardrails & Policies</CardTitle>
               <CardDescription>
                 Zero PRN exposure to public clients, verified institutional domain enforcement (@indiraicem.ac.in), server-side capacity decrementing, and private incident logging.
               </CardDescription>

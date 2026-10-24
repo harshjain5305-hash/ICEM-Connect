@@ -624,7 +624,7 @@ export const LiveRideTrackingMap: React.FC<LiveRideTrackingMapProps> = ({
       <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/60">
         <span className="flex items-center gap-1">
           <ShieldAlert className="w-3 h-3 text-emerald-600" />
-          Location is ephemeral and terminates when trip concludes (Rules.md §14.6).
+          Location streaming is ephemeral and automatically terminates when trip concludes.
         </span>
         <span className="font-semibold text-primary">ICEM Campus Transit Security</span>
       </div>

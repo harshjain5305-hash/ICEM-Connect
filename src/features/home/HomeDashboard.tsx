@@ -2,14 +2,55 @@ import React from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Search, PlusCircle, CheckCircle2, Shield, Database, Lock, Zap } from 'lucide-react';
-import { INSTITUTIONAL_DOMAIN } from '@/features/auth/domainValidation';
+import {
+  Search,
+  PlusCircle,
+  Shield,
+  Lock,
+  Zap,
+  MapPin,
+  ArrowRight,
+  Navigation,
+  Users,
+  Compass,
+} from 'lucide-react';
 
 interface HomeDashboardProps {
   onFindRideClick?: () => void;
   onOfferRideClick?: () => void;
   userEmail?: string | null;
 }
+
+const POPULAR_CORRIDORS = [
+  {
+    origin: 'Talegaon Station',
+    destination: 'ICEM Campus',
+    type: 'Railway Link',
+    description: 'Convenient hop for train commuters via Talegaon Dabhade',
+    estimatedTime: '15-20 min',
+  },
+  {
+    origin: 'Akurdi / Nigdi',
+    destination: 'ICEM Campus',
+    type: 'PCMC Express',
+    description: 'Connecting Pradhikaran & Old Mumbai Highway to Parandwadi',
+    estimatedTime: '25-30 min',
+  },
+  {
+    origin: 'Ravet / Kiwale',
+    destination: 'ICEM Campus',
+    type: 'Local Route',
+    description: 'Quick corridor across Mukai Chowk & Dehu Road bypass',
+    estimatedTime: '12-18 min',
+  },
+  {
+    origin: 'Bhosari / Landewadi',
+    destination: 'ICEM Campus',
+    type: 'East PCMC',
+    description: 'Daily carpool and bike share routes for eastern PCMC students',
+    estimatedTime: '30-40 min',
+  },
+];
 
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onFindRideClick,
@@ -47,69 +88,100 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </div>
       </div>
 
-      {/* Phase 0 Foundation Verification Checklist */}
+      {/* Popular Campus Commute Corridors */}
       <Card className="border-border">
-        <CardHeader>
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <CardTitle className="text-base flex items-center gap-2">
-                <Database className="h-5 w-5 text-primary" />
-                <span>Phase 0 — Project Foundation Status</span>
+                <Navigation className="h-5 w-5 text-primary" />
+                <span>Popular Campus Commute Corridors</span>
               </CardTitle>
               <CardDescription>
-                Architectural baseline validated against PRD.md, Architecture.md, and Rules.md
+                Frequent student routes connecting transit hubs with Indira ICEM Parandwadi
               </CardDescription>
             </div>
             <Badge variant="cyan" className="gap-1 px-3 py-1">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              <span>Foundation Verified</span>
+              <Compass className="h-3.5 w-3.5" />
+              <span>Live Campus Hubs</span>
             </Badge>
           </div>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-border bg-muted/40 p-3.5 space-y-1 text-xs">
-              <div className="font-semibold text-foreground flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>Indira Institutional Theme &amp; Tokens</span>
+            {POPULAR_CORRIDORS.map((corridor, idx) => (
+              <div
+                key={idx}
+                onClick={onFindRideClick}
+                className="group cursor-pointer rounded-xl border border-border bg-card p-3.5 transition-all hover:border-primary/40 hover:shadow-sm"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 font-semibold text-foreground text-sm group-hover:text-primary transition-colors">
+                      <MapPin className="h-4 w-4 text-[#00A2A5] shrink-0" />
+                      <span>{corridor.origin}</span>
+                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                      <span>{corridor.destination}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {corridor.description}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2.5 flex items-center justify-between text-[11px] pt-2 border-t border-border/50">
+                  <span className="font-medium text-[#003C84] dark:text-[#00A2A5]">{corridor.type}</span>
+                  <span className="text-muted-foreground">~{corridor.estimatedTime}</span>
+                </div>
               </div>
-              <p className="text-muted-foreground">
-                Indira Deep Navy (<code>#003C84</code>), Royal Blue (<code>#1D59A3</code>), Cyan-Teal (<code>#00A2A5</code>), and Tangerine (<code>#E85C0D</code>) with Inter typography.
-              </p>
-            </div>
-
-            <div className="rounded-lg border border-border bg-muted/40 p-3.5 space-y-1 text-xs">
-              <div className="font-semibold text-foreground flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>Supabase Backend Integration</span>
-              </div>
-              <p className="text-muted-foreground">
-                Connected client integration with live health check, typed schemas, and fallback diagnostics.
-              </p>
-            </div>
-
-            <div className="rounded-lg border border-border bg-muted/40 p-3.5 space-y-1 text-xs">
-              <div className="font-semibold text-foreground flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>Institutional Auth &amp; Domain Shell</span>
-              </div>
-              <p className="text-muted-foreground">
-                Strict server-side validation rejecting non-@<strong>{INSTITUTIONAL_DOMAIN}</strong> accounts.
-              </p>
-            </div>
-
-            <div className="rounded-lg border border-border bg-muted/40 p-3.5 space-y-1 text-xs">
-              <div className="font-semibold text-foreground flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>PostgreSQL Migrations &amp; RLS</span>
-              </div>
-              <p className="text-muted-foreground">
-                Isolated <code>user_roles</code>, private PRN fields, and strict Row Level Security policies.
-              </p>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
+
+      {/* How ICEM Connect Works */}
+      <div className="rounded-2xl border border-border bg-muted/20 p-5 sm:p-6 space-y-4">
+        <div className="space-y-1">
+          <h3 className="font-bold text-base text-foreground flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            <span>How ICEM Connect Works</span>
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            A trusted, peer-to-peer ride sharing community exclusively for verified Indira students
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-border/70 bg-card p-4 space-y-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-xs">
+              1
+            </div>
+            <h4 className="font-semibold text-foreground text-sm">Find or Offer</h4>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Search by route and time to catch a ride, or offer empty scooter and bike seats on journeys you already make.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-border/70 bg-card p-4 space-y-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#00A2A5]/10 text-[#00A2A5] font-bold text-xs">
+              2
+            </div>
+            <h4 className="font-semibold text-foreground text-sm">Coordinate Easily</h4>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Coordinate pickup locations directly with your verified rider or host via private in-app trip messaging.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-border/70 bg-card p-4 space-y-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#E85C0D]/10 text-[#E85C0D] font-bold text-xs">
+              3
+            </div>
+            <h4 className="font-semibold text-foreground text-sm">Travel Safely</h4>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Track live trip location in real-time. Ephemeral location sharing automatically turns off once your ride is complete.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Core Principles & Privacy Commitment */}
       <div className="grid gap-4 sm:grid-cols-3">

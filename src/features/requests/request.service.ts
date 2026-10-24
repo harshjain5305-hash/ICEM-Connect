@@ -87,7 +87,7 @@ export const requestService = {
           if (diffMinutes !== null && diffMinutes <= 45) {
             return {
               hasConflict: true,
-              message: `Cannot request ride: You already have a confirmed trip scheduled at ${confirmedRide.departure_time} on ${confirmedRide.departure_date} (within 45 minutes of ${departureTime}) (Rules.md §13)`,
+              message: `Cannot request ride: You already have a confirmed trip scheduled at ${confirmedRide.departure_time} on ${confirmedRide.departure_date} (within 45 minutes of ${departureTime})`,
             };
           }
         }
@@ -112,7 +112,7 @@ export const requestService = {
         if (diffMinutes !== null && diffMinutes <= 45) {
           return {
             hasConflict: true,
-            message: `Cannot request ride: You are already hosting a scheduled trip at ${hostedRide.departure_time} on ${hostedRide.departure_date} (within 45 minutes of ${departureTime}) (Rules.md §13)`,
+            message: `Cannot request ride: You are already hosting a scheduled trip at ${hostedRide.departure_time} on ${hostedRide.departure_date} (within 45 minutes of ${departureTime})`,
           };
         }
       }
@@ -161,7 +161,7 @@ export const requestService = {
       if (conflict.hasConflict) {
         throw new RequestServiceError(
           'SCHEDULE_CONFLICT',
-          conflict.message || 'Schedule conflict: Overlapping trip within 45 minutes (Rules.md §13)'
+          conflict.message || 'Schedule conflict: Overlapping trip within 45 minutes'
         );
       }
     }

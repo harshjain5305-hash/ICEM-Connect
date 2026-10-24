@@ -168,7 +168,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
                 <div className="rounded-lg bg-muted/40 p-2.5 text-[11px] text-muted-foreground space-y-1">
                   <div className="font-semibold text-foreground flex items-center gap-1">
-                    <span>Privacy Notice (Rules.md §23)</span>
+                    <span>Confidentiality & Privacy Notice</span>
                   </div>
                   <div>
                     The reported user is never notified of your identity or that a report was submitted against them. Reports remain private between you and campus moderators.
