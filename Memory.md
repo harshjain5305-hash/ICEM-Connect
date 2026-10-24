@@ -1218,6 +1218,28 @@ These are documented requirements only. They must not be treated as implemented 
 
 ## Changelog
 
+### 2026-10-24 — Comprehensive Dark Mode UI/UX System Implemented & Verified
+
+State:
+- Implemented full-stack theme management system supporting `light`, `dark`, and `system` preferences:
+  - Created [`src/context/ThemeContext.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/context/ThemeContext.tsx): manages reactive theme switching, localStorage persistence (`icem_connect_theme_v1`), dynamic OS media query synchronization (`prefers-color-scheme`), HTML root `.dark` class toggling, CSS `color-scheme` style, and dynamic `<meta name="theme-color">` updates (`#003C84` light / `#091124` dark).
+  - Added anti-flicker initialization script in [`index.html`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/index.html) to eliminate light flashes on page reloads prior to React bundle hydration.
+- Implemented accessible UI controls and theme surfaces:
+  - Created [`src/components/ui/ThemeToggle.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/components/ui/ThemeToggle.tsx): accessible header icon button with smooth sun/moon animation, tooltip, and interactive dropdown menu for direct selection of Light, Dark, or System mode.
+  - Added `<ThemeToggle showDropdown />` to global [`AppHeader.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/components/layout/AppHeader.tsx) beside notifications.
+  - Integrated "Appearance & Theme" settings section into [`ProfileView.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/profile/ProfileView.tsx) with interactive selection cards (Light, Dark, System Auto) and live status badges.
+  - Refactored [`RideCoordinationChat.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/RideCoordinationChat.tsx) from hardcoded slate/white classes to semantic theme tokens (`bg-card`, `border-border`, `text-foreground`, `bg-muted`).
+- Tuned Dark Theme Design System in [`src/index.css`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/index.css):
+  - Calibrated deep midnight navy background (`#091124`), elevated card surface (`#0f1c38`), muted surface (`#16254a`), clean borders (`#1e325c`), and high-contrast text (`#f8fafc`).
+  - Preserved Indira ICEM brand accents: electric cyan (`#00A2A5`), tangerine highlight (`#E85C0D`), and vibrant primary blue.
+  - Added smooth background/color CSS transitions on `body`.
+- Tested and verified:
+  - Created [`src/context/ThemeContext.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/context/ThemeContext.test.tsx) (4 unit tests) and [`src/components/ui/ThemeToggle.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/components/ui/ThemeToggle.test.tsx) (3 unit tests).
+  - Configured `window.matchMedia` mock in [`vitest.setup.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/vitest.setup.ts).
+  - Verified test suite: **242/242 tests passing across 39 test suites** (`npm test`).
+  - Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+  - Verified production build: **clean bundle generated in 5.76s** (`npm run build`).
+
 ### 2026-10-24 — Real-Time Waypoint Green Tick & Corridor Progress Implemented & Verified
 
 State:

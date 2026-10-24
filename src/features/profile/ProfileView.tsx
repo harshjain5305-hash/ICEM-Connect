@@ -7,10 +7,12 @@ import { Alert } from '@/components/ui/Alert';
 import { DEPARTMENTS } from '@/features/auth/auth.schema';
 import { moderationService } from '@/features/moderation/moderation.service';
 import type { UserBlock } from '@/features/moderation/moderation.types';
-import { User, ShieldCheck, Star, Lock, LogOut, Check, Edit2, ShieldOff } from 'lucide-react';
+import { useTheme } from '@/context/ThemeContext';
+import { User, ShieldCheck, Star, Lock, LogOut, Check, Edit2, ShieldOff, Sun, Moon, Monitor } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
   const { profile, logout, updateProfile, roles } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [isEditing, setIsEditing] = useState(false);
   const [department, setDepartment] = useState(profile?.department || '');
   const [year, setYear] = useState<number | ''>(profile?.year || '');
@@ -238,6 +240,53 @@ export const ProfileView: React.FC = () => {
               </div>
             </div>
           )}
+          {/* Appearance & Theme Settings */}
+          <div className="pt-3 border-t border-border space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Sun className="h-3.5 w-3.5 text-[#E85C0D]" />
+              <span>Appearance &amp; Theme</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setTheme('light')}
+                className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs transition-all ${
+                  theme === 'light'
+                    ? 'border-primary bg-primary/10 text-primary font-semibold ring-2 ring-primary/20'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Sun className="h-4 w-4 text-[#E85C0D]" />
+                <span className="text-[11px]">Light</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTheme('dark')}
+                className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs transition-all ${
+                  theme === 'dark'
+                    ? 'border-primary bg-primary/10 text-primary font-semibold ring-2 ring-primary/20'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Moon className="h-4 w-4 text-[#00A2A5]" />
+                <span className="text-[11px]">Dark</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTheme('system')}
+                className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs transition-all ${
+                  theme === 'system'
+                    ? 'border-primary bg-primary/10 text-primary font-semibold ring-2 ring-primary/20'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Monitor className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[11px]">System</span>
+              </button>
+            </div>
+          </div>
         </CardContent>
 
         <CardFooter className="border-t border-border pt-4">

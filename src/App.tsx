@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Navigation, type NavTab } from '@/components/layout/Navigation';
+import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/features/auth/AuthContext';
 import { AuthShell } from '@/features/auth/AuthShell';
 import { ProtectedRoute } from '@/features/auth/ProtectedRoute';
@@ -148,9 +149,11 @@ const AppContent: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 };
 

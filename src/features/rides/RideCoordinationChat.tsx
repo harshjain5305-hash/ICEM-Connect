@@ -144,46 +144,46 @@ export const RideCoordinationChat: React.FC<RideCoordinationChatProps> = ({
 
   if (isLoading) {
     return (
-      <div className={`p-6 text-center bg-white rounded-xl border border-slate-200 ${className}`}>
+      <div className={`p-6 text-center bg-card rounded-xl border border-border ${className}`}>
         <RefreshCw className="w-5 h-5 mx-auto text-primary animate-spin mb-2" />
-        <p className="text-xs text-slate-500 font-medium">Loading coordination messages...</p>
+        <p className="text-xs text-muted-foreground font-medium">Loading coordination messages...</p>
       </div>
     );
   }
 
   if (chatAccess && !chatAccess.can_read) {
     return (
-      <div className={`p-4 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-xs flex items-center gap-2 ${className}`}>
-        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+      <div className={`p-4 bg-amber-500/10 rounded-xl border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs flex items-center gap-2 ${className}`}>
+        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
         <span>{chatAccess.reason || 'You do not have permission to view messages for this ride.'}</span>
       </div>
     );
   }
 
   return (
-    <div className={`flex flex-col bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden ${className}`}>
+    <div className={`flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden ${className}`}>
       {/* Header */}
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/40">
         <div className="flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-bold text-slate-800">Trip Coordination Chat</h3>
-          <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-mono text-slate-500">
+          <h3 className="text-sm font-bold text-foreground">Trip Coordination Chat</h3>
+          <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-mono text-muted-foreground">
             Ephemeral
           </Badge>
         </div>
-        <div className="flex items-center gap-1 text-[11px] text-slate-500">
-          <Clock className="w-3 h-3 text-slate-400" />
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Clock className="w-3 h-3 text-muted-foreground/70" />
           <span>Auto-expires 3h post-trip</span>
         </div>
       </div>
 
       {/* Messages Scroll Area */}
-      <div className="flex-1 p-4 min-h-[200px] max-h-[340px] overflow-y-auto space-y-3 bg-slate-50/30">
+      <div className="flex-1 p-4 min-h-[200px] max-h-[340px] overflow-y-auto space-y-3 bg-muted/15">
         {messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center py-8 px-4 text-slate-400">
-            <MessageSquare className="w-8 h-8 text-slate-300 mb-2 stroke-[1.5]" />
-            <p className="text-xs font-medium text-slate-600">No coordination messages yet</p>
-            <p className="text-[11px] text-slate-400 max-w-xs mt-1">
+          <div className="h-full flex flex-col items-center justify-center text-center py-8 px-4 text-muted-foreground">
+            <MessageSquare className="w-8 h-8 text-muted-foreground/40 mb-2 stroke-[1.5]" />
+            <p className="text-xs font-medium text-foreground">No coordination messages yet</p>
+            <p className="text-[11px] text-muted-foreground max-w-xs mt-1">
               Use this chat to coordinate exact pickup spots, timing, or vehicle identification with your ride group.
             </p>
           </div>
@@ -198,7 +198,7 @@ export const RideCoordinationChat: React.FC<RideCoordinationChatProps> = ({
                 className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
               >
                 <div className="flex items-center gap-1.5 mb-1 px-1">
-                  <span className="text-[10px] font-semibold text-slate-600">
+                  <span className="text-[10px] font-semibold text-foreground/80">
                     {isMe ? 'You' : msg.sender_name || 'Student'}
                   </span>
                   {isMsgFromHost && (
@@ -206,7 +206,7 @@ export const RideCoordinationChat: React.FC<RideCoordinationChatProps> = ({
                       Host
                     </span>
                   )}
-                  <span className="text-[9px] text-slate-400">
+                  <span className="text-[9px] text-muted-foreground">
                     {new Date(msg.created_at).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -216,8 +216,8 @@ export const RideCoordinationChat: React.FC<RideCoordinationChatProps> = ({
                 <div
                   className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs shadow-2xs break-words ${
                     isMe
-                      ? 'bg-primary text-white rounded-br-xs'
-                      : 'bg-white border border-slate-200 text-slate-800 rounded-bl-xs'
+                      ? 'bg-primary text-primary-foreground rounded-br-xs'
+                      : 'bg-card border border-border text-foreground rounded-bl-xs shadow-xs'
                   }`}
                 >
                   {msg.message}
@@ -231,25 +231,25 @@ export const RideCoordinationChat: React.FC<RideCoordinationChatProps> = ({
 
       {/* Error alert if any */}
       {error && (
-        <div className="px-4 py-2 bg-red-50 border-t border-red-100 flex items-center gap-2 text-xs text-red-700">
+        <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20 flex items-center gap-2 text-xs text-destructive">
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Input or Read-Only Notice Bar */}
-      <div className="p-3 border-t border-slate-100 bg-white">
+      <div className="p-3 border-t border-border bg-card">
         {isReadOnly ? (
-          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-center">
-            <p className="text-xs font-medium text-slate-600 flex items-center justify-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <div className="p-2.5 rounded-lg bg-muted/40 border border-border text-center">
+            <p className="text-xs font-medium text-muted-foreground flex items-center justify-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               Trip has concluded. Chat is read-only and will be removed in 3 hours.
             </p>
           </div>
         ) : chatAccess && !chatAccess.can_send ? (
-          <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-center">
-            <p className="text-xs font-medium text-amber-800 flex items-center justify-center gap-1.5">
-              <AlertCircle className="w-4 h-4 text-amber-600" />
+          <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-center">
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-200 flex items-center justify-center gap-1.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               {chatAccess.reason || 'Sending messages is restricted for this ride.'}
             </p>
           </div>
@@ -263,7 +263,7 @@ export const RideCoordinationChat: React.FC<RideCoordinationChatProps> = ({
                 placeholder="Coordinate pickup landmark or exact arrival..."
                 maxLength={500}
                 disabled={isSending}
-                className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-hidden focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-slate-50"
+                className="flex-1 text-xs px-3 py-2 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-muted"
               />
               <Button
                 type="submit"
@@ -277,12 +277,12 @@ export const RideCoordinationChat: React.FC<RideCoordinationChatProps> = ({
               </Button>
             </div>
             <div className="flex justify-between items-center px-1">
-              <span className="text-[10px] text-slate-400">
+              <span className="text-[10px] text-muted-foreground">
                 Visible only to confirmed trip participants and host
               </span>
               <span
                 className={`text-[10px] font-mono ${
-                  inputText.length > 450 ? 'text-amber-600 font-bold' : 'text-slate-400'
+                  inputText.length > 450 ? 'text-amber-600 font-bold' : 'text-muted-foreground'
                 }`}
               >
                 {inputText.length}/500

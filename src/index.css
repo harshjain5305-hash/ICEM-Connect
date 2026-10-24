@@ -63,43 +63,49 @@
   }
 
   .dark {
-    --background: 223 65% 10%;
+    --background: 223 60% 8%;         /* #091124 Deep midnight navy */
     --foreground: 210 20% 98%;
 
-    --card: 223 65% 14%;
+    --card: 223 50% 12%;              /* #0f1c38 Elevated dark card surface */
     --card-foreground: 210 20% 98%;
 
-    --popover: 223 65% 14%;
+    --popover: 223 50% 12%;
     --popover-foreground: 210 20% 98%;
 
-    --primary: 213 80% 45%;
+    --primary: 213 85% 55%;           /* Vibrant royal blue for dark mode contrast */
     --primary-foreground: 0 0% 100%;
 
-    --primary-hover: 213 70% 55%;
+    --primary-hover: 213 85% 65%;
     --primary-slate: 210 20% 98%;
 
-    --secondary: 223 50% 20%;
+    --secondary: 223 40% 18%;
     --secondary-foreground: 210 20% 98%;
 
-    --muted: 223 50% 20%;
-    --muted-foreground: 215 16% 65%;
+    --muted: 223 40% 16%;
+    --muted-foreground: 215 20% 70%;
 
-    --accent: 181 100% 38%;
+    --accent: 181 100% 40%;           /* #00A2A5 Electric Cyan */
     --accent-foreground: 0 0% 100%;
 
-    --cyan: 181 100% 38%;
-    --cyan-light: 182 61% 54%;
+    --cyan: 181 100% 40%;
+    --cyan-light: 182 65% 55%;
     --cyan-foreground: 0 0% 100%;
 
     --tangerine: 22 94% 54%;
     --tangerine-foreground: 0 0% 100%;
 
-    --destructive: 0 75% 55%;
+    --success: 160 84% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 100%;
+
+    --destructive: 0 80% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 223 40% 25%;
-    --input: 223 40% 25%;
-    --ring: 181 100% 38%;
+    --border: 223 35% 20%;
+    --input: 223 35% 20%;
+    --ring: 181 100% 40%;
   }
 }
 
@@ -107,8 +113,14 @@
   * {
     @apply border-border;
   }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-foreground font-sans transition-colors duration-200;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-tap-highlight-color: transparent;
   }

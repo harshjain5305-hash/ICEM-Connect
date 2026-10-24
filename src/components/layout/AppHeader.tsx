@@ -1,6 +1,7 @@
 import React from 'react';
 import { Compass, ShieldCheck } from 'lucide-react';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 export const AppHeader: React.FC = () => {
   const [logoError, setLogoError] = React.useState(false);
@@ -36,6 +37,7 @@ export const AppHeader: React.FC = () => {
 
         <div className="flex items-center gap-2 sm:gap-3">
           <NotificationBell />
+          <ThemeToggle showDropdown />
         </div>
       </div>
     </header>
