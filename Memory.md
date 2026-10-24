@@ -1218,6 +1218,26 @@ These are documented requirements only. They must not be treated as implemented 
 
 ## Changelog
 
+### 2026-10-24 — Real-Time Waypoint Green Tick & Corridor Progress Implemented & Verified
+
+State:
+- Created [`src/features/routes/waypointProgress.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/waypointProgress.ts):
+  - Deterministic evaluation of waypoint progress using proximity (Haversine $\le 250\text{m}$) and route polyline projection indices.
+  - Directional monotonic propagation: passing waypoint $K$ automatically ensures all earlier stops $1..K-1$ remain passed.
+  - GPS jitter resilience with persistent set accumulation so passed green ticks never flicker or disappear during signal fluctuations.
+- Updated [`src/features/location-tracking/LiveRideTrackingMap.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/location-tracking/LiveRideTrackingMap.tsx):
+  - Intermediate waypoints passed by the rider display an emerald green pin, pulsing aura, white checkmark (`✓`), and `"✓ PASSED"` badge with green label.
+  - Dynamic checkmark indicators on departed Origin and arrived Destination.
+  - Added interactive **Corridor Waypoints Progress Strip** below map canvas with percentage completion, passed counts, and live step chips.
+- Updated [`src/features/routes/WaypointSequenceList.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/routes/WaypointSequenceList.tsx):
+  - Timeline node markers turn emerald green with a crisp white checkmark (`Check` icon) upon passing.
+  - Distinct `"✓ Passed"` and `"Reached"` status badges for completed transit nodes.
+- Updated [`src/features/realtime/ActiveRideSessionBanner.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/realtime/ActiveRideSessionBanner.tsx) and [`src/features/rides/RideDetailModal.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/RideDetailModal.tsx) to reflect real-time waypoint passing across banner and modal views.
+- Added comprehensive unit tests in [`src/features/routes/waypointProgress.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect project/v1.1/src/features/routes/waypointProgress.test.ts) (8 tests) and [`src/features/routes/WaypointSequenceList.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect project/v1.1/src/features/routes/WaypointSequenceList.test.tsx) (2 tests).
+- Verified test suite: **235/235 tests passing across 37 test suites** (`npm test`).
+- Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+- Verified production build: **clean build generated** with Rollup/Vite.
+
 ### 2026-10-24 — Phase 11: Vercel Deployment Readiness & UI Production Polish Implemented & Verified
 
 State:
