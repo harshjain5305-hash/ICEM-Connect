@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth/useAuth';
 import { LocationSelect } from '@/features/locations/LocationSelect';
+import { locationService } from '@/features/locations/location.service';
 import type { Location } from '@/features/locations/location.schema';
 import { matchingService } from './matching.service';
+import { routeAlertService } from './routeAlert.service';
 import type { RideSearchResult, MatchedRideCandidate } from './matching.types';
 import { RideDetailModal } from '@/features/rides/RideDetailModal';
 import { JoinRequestModal } from '@/features/requests/JoinRequestModal';
 import type { Ride } from '@/features/rides/ride.types';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -25,11 +27,16 @@ import {
   AlertCircle,
   PlusCircle,
   Eye,
+  Bell,
+  Shield,
+  LogIn,
 } from 'lucide-react';
 
 export interface FindRideViewProps {
+  initialCorridor?: { pickupLocationId: string; dropLocationId: string } | null;
   onOfferClick?: () => void;
   onViewRequestsClick?: () => void;
+  onRequestAuth?: () => void;
 }
 
 function getTodayString(): string {
@@ -40,8 +47,13 @@ function getTodayString(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick, onViewRequestsClick }) => {
-  const { user } = useAuth();
+export const FindRideView: React.FC<FindRideViewProps> = ({
+  initialCorridor,
+  onOfferClick,
+  onViewRequestsClick,
+  onRequestAuth,
+}) => {
+  const { user, isAuthenticated } = useAuth();
 
   const [pickup, setPickup] = useState<Location | null>(null);
   const [drop, setDrop] = useState<Location | null>(null);
@@ -57,6 +69,87 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick, onView
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [requestCandidate, setRequestCandidate] = useState<MatchedRideCandidate | null>(null);
+  const [authPromptCandidate, setAuthPromptCandidate] = useState<MatchedRideCandidate | null>(null);
+
+  // Route Alert state
+  const [alertEmail, setAlertEmail] = useState('');
+  const [alertActive, setAlertActive] = useState(false);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [isSettingAlert, setIsSettingAlert] = useState(false);
+
+  // 1. Resolve initial corridor if passed from Home
+  useEffect(() => {
+    if (!initialCorridor) return;
+    let isMounted = true;
+
+    async function loadCorridor() {
+      try {
+        const [pLoc, dLoc] = await Promise.all([
+          locationService.getById(initialCorridor!.pickupLocationId),
+          locationService.getById(initialCorridor!.dropLocationId),
+        ]);
+        if (!isMounted) return;
+        if (pLoc && dLoc) {
+          setPickup(pLoc);
+          setDrop(dLoc);
+          setIsSearching(true);
+          setErrorMessage(null);
+          try {
+            const result = await matchingService.findCompatibleRides({
+              pickup_location_id: pLoc.id,
+              drop_location_id: dLoc.id,
+              departure_date: getTodayString(),
+              departure_time: null,
+              flexibility_minutes: 30,
+              requested_seats: 1,
+              passenger_id: user?.id || null,
+            });
+            if (isMounted) {
+              setSearchResult(result);
+            }
+          } catch (err: unknown) {
+            if (isMounted && err instanceof Error) {
+              setErrorMessage(err.message);
+            }
+          } finally {
+            if (isMounted) setIsSearching(false);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to resolve initial corridor:', err);
+      }
+    }
+
+    loadCorridor();
+    return () => {
+      isMounted = false;
+    };
+  }, [initialCorridor, user?.id]);
+
+  // 2. Check existing route alerts when search result returns empty
+  useEffect(() => {
+    if (!searchResult || searchResult.candidates.length > 0) {
+      setAlertActive(false);
+      setAlertMessage(null);
+      return;
+    }
+
+    async function checkExistingAlert() {
+      const emailToCheck = user?.email || alertEmail;
+      if (!emailToCheck && !user?.id) return;
+      const alerts = await routeAlertService.getUserAlerts(user?.id, emailToCheck);
+      const matching = alerts.find(
+        (a) =>
+          a.pickupLocationId === searchResult?.pickupLocation.id &&
+          a.dropLocationId === searchResult?.dropLocation.id &&
+          a.date === searchResult?.query.departure_date
+      );
+      if (matching) {
+        setAlertActive(true);
+      }
+    }
+    checkExistingAlert();
+  }, [searchResult, user?.id, user?.email, alertEmail]);
 
   const handleSwapLocations = () => {
     const temp = pickup;
@@ -109,8 +202,66 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick, onView
     }
   };
 
+  const handleSetRouteAlert = async () => {
+    if (!searchResult) return;
+    const targetEmail = user?.email || alertEmail.trim();
+    if (!targetEmail) {
+      setAlertMessage('Please enter your institutional email to receive route alerts.');
+      return;
+    }
+    setIsSettingAlert(true);
+    setAlertMessage(null);
+    try {
+      await routeAlertService.createAlert({
+        userId: user?.id || null,
+        email: targetEmail,
+        pickupLocationId: searchResult.pickupLocation.id,
+        dropLocationId: searchResult.dropLocation.id,
+        pickupName: searchResult.pickupLocation.name,
+        dropName: searchResult.dropLocation.name,
+        date: searchResult.query.departure_date,
+      });
+      setAlertActive(true);
+      setAlertMessage('Route alert activated! You will be notified in-app as soon as a student offers a ride.');
+    } catch (err: unknown) {
+      setAlertMessage(err instanceof Error ? err.message : 'Failed to set route alert.');
+    } finally {
+      setIsSettingAlert(false);
+    }
+  };
+
+  const handleRequestSeatClick = (candidate: MatchedRideCandidate) => {
+    if (!isAuthenticated) {
+      setAuthPromptCandidate(candidate);
+      return;
+    }
+    setRequestCandidate(candidate);
+  };
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 space-y-6">
+      {/* GUEST BROWSING NOTICE */}
+      {!isAuthenticated && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-[#00A2A5] shrink-0" />
+            <span className="text-muted-foreground">
+              <strong className="text-foreground">Browsing as Guest:</strong> You can search, explore routes, and view schedules freely. Sign-in is only required when requesting a seat.
+            </span>
+          </div>
+          {onRequestAuth && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs shrink-0 self-start sm:self-auto gap-1"
+              onClick={onRequestAuth}
+            >
+              <LogIn className="h-3 w-3" /> Sign In
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* SEARCH CARD */}
       <Card className="shadow-sm border-border">
         <CardHeader className="pb-3">
@@ -222,18 +373,16 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick, onView
             )}
 
             <div className="space-y-1.5">
-              <span className="text-muted-foreground block flex items-center gap-1">
-                <Users className="h-3.5 w-3.5 text-primary" /> Seats Needed
-              </span>
+              <span className="text-muted-foreground block">Seats Required</span>
               <div className="flex gap-1.5">
-                {[1, 2].map((s) => (
+                {[1, 2, 3].map((s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setRequestedSeats(s)}
                     className={`px-3 py-1 rounded-md border text-[11px] font-medium transition-colors ${
                       requestedSeats === s
-                        ? 'bg-[#003C84] text-white border-[#003C84] dark:bg-[#00A2A5] font-semibold'
+                        ? 'bg-primary text-primary-foreground font-semibold border-primary'
                         : 'border-input hover:bg-muted/50 text-foreground'
                     }`}
                   >
@@ -280,8 +429,8 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick, onView
           </div>
 
           {searchResult.candidates.length === 0 ? (
-            <Card className="text-center py-10 px-4 border-dashed border-border bg-muted/20 space-y-3">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400">
+            <Card className="text-center py-8 px-4 border-border bg-card space-y-4">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
                 <AlertCircle className="h-6 w-6" />
               </div>
               <div className="space-y-1">
@@ -293,13 +442,64 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick, onView
                 </p>
               </div>
 
+              {/* ROUTE ALERT SUBSCRIPTION BOX */}
+              <div className="mx-auto max-w-md rounded-xl border border-primary/20 bg-primary/5 p-4 text-left space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+                    <Bell className="h-4 w-4 text-[#00A2A5]" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-foreground">
+                      Set a Route Alert for This Trip
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground">
+                      We'll notify you automatically when a verified student offers a ride along this corridor.
+                    </p>
+                  </div>
+                </div>
+
+                {alertActive ? (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>Route Alert Active ({searchResult.pickupLocation.name.split(' ')[0]} &rarr; {searchResult.dropLocation.name.split(' ')[0]})</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 pt-1">
+                    {!isAuthenticated && (
+                      <Input
+                        type="email"
+                        placeholder="your.name@indiraicem.ac.in"
+                        value={alertEmail}
+                        onChange={(e) => setAlertEmail(e.target.value)}
+                        className="h-8 text-xs bg-background"
+                      />
+                    )}
+                    {alertMessage && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">{alertMessage}</p>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={handleSetRouteAlert}
+                      disabled={isSettingAlert}
+                      className="w-full h-8 text-xs gap-1.5 bg-primary text-white"
+                    >
+                      <Bell className="h-3.5 w-3.5" />
+                      {isSettingAlert ? 'Setting Alert...' : 'Notify Me When a Ride is Available'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+
               {onOfferClick && (
                 <div className="pt-2">
                   <Button
                     onClick={onOfferClick}
-                    className="gap-2 bg-[#003C84] hover:bg-[#1D59A3] text-white"
+                    variant="outline"
+                    className="gap-2"
                   >
-                    <PlusCircle className="h-4 w-4" /> Offer a Ride on This Route
+                    <PlusCircle className="h-4 w-4 text-[#00A2A5]" /> Offer a Ride on This Route
                   </Button>
                 </div>
               )}
@@ -315,7 +515,7 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick, onView
                     setIsModalOpen(true);
                   }}
                   onRequestSeat={() => {
-                    setRequestCandidate(candidate);
+                    handleRequestSeatClick(candidate);
                   }}
                 />
               ))}
@@ -337,6 +537,49 @@ export const FindRideView: React.FC<FindRideViewProps> = ({ onOfferClick, onView
             handleSearch();
           }}
         />
+      )}
+
+      {/* AUTH PROMPT MODAL FOR GUESTS CLICKING REQUEST SEAT */}
+      {authPromptCandidate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <Card className="w-full max-w-md shadow-2xl border-border animate-in fade-in zoom-in-95 duration-150">
+            <CardHeader className="text-center pb-3">
+              <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Users className="h-6 w-6 text-[#003C84] dark:text-[#00A2A5]" />
+              </div>
+              <CardTitle className="text-lg">Student Login Required</CardTitle>
+              <CardDescription>
+                To reserve a seat and coordinate directly with your student rider, verified ICEM student credentials are required.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs space-y-1">
+                <div className="font-semibold text-primary">Selected Trip:</div>
+                <div className="text-foreground">
+                  {authPromptCandidate.pickupWaypoint.label} &rarr; {authPromptCandidate.dropWaypoint.label}
+                </div>
+                <div className="text-muted-foreground">
+                  Departs at {authPromptCandidate.ride.departure_time} &bull; {authPromptCandidate.ride.available_seats} seat free
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setAuthPromptCandidate(null)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-primary text-white gap-1.5"
+                onClick={() => {
+                  setAuthPromptCandidate(null);
+                  if (onRequestAuth) onRequestAuth();
+                }}
+              >
+                <LogIn className="h-3.5 w-3.5" /> Sign In / Register
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
       )}
 
       {/* JOIN REQUEST MODAL (Phase 6) */}

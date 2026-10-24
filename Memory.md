@@ -1218,6 +1218,29 @@ These are documented requirements only. They must not be treated as implemented 
 
 ## Changelog
 
+### 2026-10-24 — Public Read-Only Browsing, 1-Click Corridors & Route Alerts Implemented & Verified
+
+State:
+- Solved first-time visitor onboarding friction and cold-start bounce cliff:
+  1. **Public Read-Only Browsing & Progressive Auth:**
+     - Unblocked `case 'find'` in [`src/App.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/App.tsx) by removing mandatory `ProtectedRoute` wrap.
+     - Guests and first-time visitors can freely search, view route details, and explore stops without creating an account or providing PRN upfront.
+     - Displays contextual guest exploration banner in [`src/features/matching/FindRideView.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/matching/FindRideView.tsx).
+     - Gated only the actual seat reservation action (`Request Seat`), presenting a modal explaining: *"Student Login Required to coordinate directly with your student rider."*
+  2. **1-Click Pre-Filled Corridors & Instant Search Execution:**
+     - Mapped all "Popular Campus Commute Corridors" on [`src/features/home/HomeDashboard.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/home/HomeDashboard.tsx) to canonical campus locations (Talegaon, Akurdi, Kiwale/Ravet, Bhosari $\to$ ICEM Campus).
+     - Tapping any corridor card directly pre-populates pickup and drop in `FindRideView` and automatically triggers matching with zero re-typing required.
+  3. **Empty-State Route Alerts & Waitlist Engine:**
+     - Created [`src/features/matching/routeAlert.types.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/matching/routeAlert.types.ts) and [`src/features/matching/routeAlert.service.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/matching/routeAlert.service.ts) supporting route alert creation, duplicate detection, and subscriber notifications.
+     - When search results return 0 matching rides, replaced the dead-end empty state with a proactive **Route Alert Box** allowing 1-click subscription (or guest student email entry).
+     - Connected `routeAlertService.notifySubscribersOnNewRide` inside [`src/features/rides/ride.service.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/rides/ride.service.ts) `createRide()`, automatically dispatching in-app notifications whenever a host offers a matching corridor ride.
+- Added and verified unit & component test suites:
+  - Created [`src/features/matching/routeAlert.service.test.ts`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/matching/routeAlert.service.test.ts) (4 tests).
+  - Expanded [`src/features/matching/FindRideView.test.tsx`](file:///c:/Users/Asus/Downloads/icem%20connect%20project/v1.1/src/features/matching/FindRideView.test.tsx) (+3 tests covering guest banner, auth prompt on request seat, auto-search on corridor prop, and empty-state route alerts).
+  - Verified test suite: **249/249 tests passing across 40 test suites** (`npm test`).
+  - Verified TypeScript compilation: **0 errors** (`npx tsc --noEmit`).
+  - Verified production build: **clean bundle generated in 3.84s** (`npm run build`).
+
 ### 2026-10-24 — Comprehensive Dark Mode UI/UX System Implemented & Verified
 
 State:

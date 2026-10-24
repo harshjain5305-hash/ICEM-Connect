@@ -1,5 +1,6 @@
 import { rideRepository } from './ride.repository';
 import { rideSessionService } from './rideSession.service';
+import { routeAlertService } from '@/features/matching/routeAlert.service';
 import type { Ride, RideWaypoint } from './ride.types';
 import type { RideStatus } from '@/types/database';
 import {
@@ -52,7 +53,15 @@ export const rideService = {
     const input: CreateRideInput = parseResult.data;
     const initialStatus: RideStatus = asDraft ? 'DRAFT' : 'PUBLISHED';
 
-    return await rideRepository.createRide(hostId, input, initialStatus);
+    const createdRide = await rideRepository.createRide(hostId, input, initialStatus);
+
+    if (createdRide.status === 'PUBLISHED') {
+      routeAlertService.notifySubscribersOnNewRide(createdRide).catch((err) => {
+        console.warn('Failed to notify route alert subscribers on new ride:', err);
+      });
+    }
+
+    return createdRide;
   },
 
   /**

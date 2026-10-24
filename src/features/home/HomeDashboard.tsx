@@ -15,16 +15,28 @@ import {
   Compass,
 } from 'lucide-react';
 
-interface HomeDashboardProps {
-  onFindRideClick?: () => void;
+export interface PopularCorridor {
+  origin: string;
+  destination: string;
+  pickupLocationId: string;
+  dropLocationId: string;
+  type: string;
+  description: string;
+  estimatedTime: string;
+}
+
+export interface HomeDashboardProps {
+  onFindRideClick?: (corridor?: { pickupLocationId: string; dropLocationId: string }) => void;
   onOfferRideClick?: () => void;
   userEmail?: string | null;
 }
 
-const POPULAR_CORRIDORS = [
+export const POPULAR_CORRIDORS: PopularCorridor[] = [
   {
     origin: 'Talegaon Station',
     destination: 'ICEM Campus',
+    pickupLocationId: 'loc_talegaon_station',
+    dropLocationId: 'loc_icem_campus',
     type: 'Railway Link',
     description: 'Convenient hop for train commuters via Talegaon Dabhade',
     estimatedTime: '15-20 min',
@@ -32,6 +44,8 @@ const POPULAR_CORRIDORS = [
   {
     origin: 'Akurdi / Nigdi',
     destination: 'ICEM Campus',
+    pickupLocationId: 'loc_akurdi_station',
+    dropLocationId: 'loc_icem_campus',
     type: 'PCMC Express',
     description: 'Connecting Pradhikaran & Old Mumbai Highway to Parandwadi',
     estimatedTime: '25-30 min',
@@ -39,6 +53,8 @@ const POPULAR_CORRIDORS = [
   {
     origin: 'Ravet / Kiwale',
     destination: 'ICEM Campus',
+    pickupLocationId: 'loc_kiwale_phata',
+    dropLocationId: 'loc_icem_campus',
     type: 'Local Route',
     description: 'Quick corridor across Mukai Chowk & Dehu Road bypass',
     estimatedTime: '12-18 min',
@@ -46,6 +62,8 @@ const POPULAR_CORRIDORS = [
   {
     origin: 'Bhosari / Landewadi',
     destination: 'ICEM Campus',
+    pickupLocationId: 'loc_bhosari_stand',
+    dropLocationId: 'loc_icem_campus',
     type: 'East PCMC',
     description: 'Daily carpool and bike share routes for eastern PCMC students',
     estimatedTime: '30-40 min',
@@ -76,7 +94,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </div>
 
           <div className="flex flex-col gap-2.5 sm:flex-row">
-            <Button onClick={onFindRideClick} variant="outline" className="gap-2">
+            <Button onClick={() => onFindRideClick?.()} variant="outline" className="gap-2">
               <Search className="h-4 w-4 text-[#00A2A5]" />
               <span>Find a Ride</span>
             </Button>
@@ -112,7 +130,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             {POPULAR_CORRIDORS.map((corridor, idx) => (
               <div
                 key={idx}
-                onClick={onFindRideClick}
+                onClick={() =>
+                  onFindRideClick?.({
+                    pickupLocationId: corridor.pickupLocationId,
+                    dropLocationId: corridor.dropLocationId,
+                  })
+                }
                 className="group cursor-pointer rounded-xl border border-border bg-card p-3.5 transition-all hover:border-primary/40 hover:shadow-sm"
               >
                 <div className="flex items-start justify-between">

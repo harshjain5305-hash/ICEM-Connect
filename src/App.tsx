@@ -18,6 +18,10 @@ const AppContent: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
   const { user, isAuthenticated } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [selectedCorridor, setSelectedCorridor] = useState<{
+    pickupLocationId: string;
+    dropLocationId: string;
+  } | null>(null);
 
   const renderTabContent = () => {
     switch (currentTab) {
@@ -25,30 +29,22 @@ const AppContent: React.FC = () => {
         return (
           <HomeDashboard
             userEmail={user?.email || null}
-            onFindRideClick={() => setCurrentTab('find')}
+            onFindRideClick={(corridor) => {
+              setSelectedCorridor(corridor || null);
+              setCurrentTab('find');
+            }}
             onOfferRideClick={() => setCurrentTab('offer')}
           />
         );
 
       case 'find':
         return (
-          <ProtectedRoute
-            fallback={
-              <div className="mx-auto max-w-md px-4 py-8">
-                <div className="mb-4 text-center">
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Verified ICEM student identity required before finding rides.
-                  </p>
-                </div>
-                <AuthShell onSuccess={() => setCurrentTab('find')} />
-              </div>
-            }
-          >
-            <FindRideView
-              onOfferClick={() => setCurrentTab('offer')}
-              onViewRequestsClick={() => setCurrentTab('rides')}
-            />
-          </ProtectedRoute>
+          <FindRideView
+            initialCorridor={selectedCorridor}
+            onOfferClick={() => setCurrentTab('offer')}
+            onViewRequestsClick={() => setCurrentTab('rides')}
+            onRequestAuth={() => setShowAuthModal(true)}
+          />
         );
 
       case 'offer':
