@@ -8,6 +8,9 @@ export const notificationTypeSchema = z.enum([
   'RIDE_CANCELLED',
   'RIDE_CONFIRMED',
   'RATING_RECEIVED',
+  'PAYMENT_PENDING_CONFIRMATION',
+  'PAYMENT_CONFIRMED',
+  'PAYMENT_DISPUTED',
   'ADMIN_ALERT',
   'SYSTEM',
 ]);

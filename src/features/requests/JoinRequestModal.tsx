@@ -35,6 +35,9 @@ export const JoinRequestModal: React.FC<JoinRequestModalProps> = ({
 }) => {
   const { user } = useAuth();
   const [seatCount, setSeatCount] = useState<number>(1);
+  const [offeredAmount, setOfferedAmount] = useState<number>(30);
+  const [isCustomAmount, setIsCustomAmount] = useState<boolean>(false);
+  const [customAmountText, setCustomAmountText] = useState<string>('40');
   const [specificAreaNote, setSpecificAreaNote] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +46,10 @@ export const JoinRequestModal: React.FC<JoinRequestModalProps> = ({
   if (!isOpen) return null;
 
   const maxSeatsAllowed = Math.min(ride.available_seats, 4);
+
+  const computedOfferedAmount = isCustomAmount
+    ? (customAmountText.trim() === '' ? 0 : Math.max(0, Math.min(2000, parseInt(customAmountText, 10) || 0)))
+    : offeredAmount;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +67,7 @@ export const JoinRequestModal: React.FC<JoinRequestModalProps> = ({
         pickup_waypoint_id: pickupWaypoint?.id || null,
         drop_waypoint_id: dropWaypoint?.id || null,
         seat_count: seatCount,
+        offered_amount: computedOfferedAmount,
         specific_area_note: specificAreaNote.trim() || null,
       });
 
@@ -79,11 +87,11 @@ export const JoinRequestModal: React.FC<JoinRequestModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="join-request-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
     >
-      <div className="relative w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl overflow-hidden my-8">
+      <div className="relative w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl overflow-hidden my-auto max-h-[92dvh] flex flex-col">
         {/* HEADER */}
-        <div className="flex items-center justify-between border-b border-border/80 px-6 py-4 bg-muted/30">
+        <div className="flex items-center justify-between border-b border-border/80 px-5 sm:px-6 py-3.5 bg-muted/30 shrink-0">
           <div>
             <h3 id="join-request-modal-title" className="text-base font-bold text-foreground">
               Request a Seat
@@ -102,7 +110,7 @@ export const JoinRequestModal: React.FC<JoinRequestModalProps> = ({
         </div>
 
         {/* BODY */}
-        <div className="p-6 space-y-5">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
           {success ? (
             <div className="text-center py-6 space-y-4">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -191,6 +199,75 @@ export const JoinRequestModal: React.FC<JoinRequestModalProps> = ({
                     );
                   })}
                 </div>
+              </div>
+
+              {/* VOLUNTARY FUEL CONTRIBUTION */}
+              <div className="space-y-1.5 rounded-xl border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <span>⛽ Fuel Cost Contribution</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">(voluntary)</span>
+                  </label>
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    {computedOfferedAmount > 0 ? `₹${computedOfferedAmount}` : 'Free'}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {[0, 20, 30, 50].map((amt) => {
+                    const isSelected = !isCustomAmount && offeredAmount === amt;
+                    return (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => {
+                          setIsCustomAmount(false);
+                          setOfferedAmount(amt);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-500'
+                            : 'border-input hover:bg-muted text-foreground'
+                        }`}
+                      >
+                        {amt === 0 ? 'Free (₹0)' : `₹${amt}`}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomAmount(true)}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                      isCustomAmount
+                        ? 'bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-500'
+                        : 'border-input hover:bg-muted text-foreground'
+                    }`}
+                  >
+                    Custom ₹
+                  </button>
+                </div>
+
+                {isCustomAmount && (
+                  <div className="pt-1.5 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground font-semibold">₹</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={2000}
+                      step={5}
+                      value={customAmountText}
+                      onChange={(e) => setCustomAmountText(e.target.value)}
+                      placeholder="e.g. 40"
+                      autoFocus
+                      className="w-28 rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground focus:ring-1 focus:ring-primary"
+                    />
+                    <span className="text-[11px] text-muted-foreground">toward fuel &amp; commute</span>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-muted-foreground pt-1">
+                  💡 Direct peer-to-peer fuel sharing helps hosts cover travel expenses and confirm your seat faster.
+                </p>
               </div>
 
               {/* OPTIONAL PICKUP / SPECIFIC-AREA NOTE (Design.md §73) */}

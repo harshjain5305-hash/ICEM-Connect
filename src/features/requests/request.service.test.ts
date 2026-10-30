@@ -348,11 +348,22 @@ describe('Join Request Service & Transactional Capacity (Phase 6)', () => {
   });
 
   describe('Dismissal & 2-Day Auto-Purge Lifecycle', () => {
+    it('prevents dismissing requests while pending host approval', async () => {
+      const req = await requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+      });
+      await expect(requestService.dismissRequest(passenger1, req.id)).rejects.toThrow(
+        /cannot delete a request pending host approval/i
+      );
+    });
+
     it('immediately hides dismissed requests from passenger UI while retaining in storage', async () => {
       const req = await requestService.createRequest(passenger1, {
         ride_id: testRideId,
         seat_count: 1,
       });
+      await requestService.cancelRequest(passenger1, req.id);
 
       let list = await requestService.listRequestsByStudent(passenger1);
       expect(list.length).toBe(1);
@@ -393,6 +404,7 @@ describe('Join Request Service & Transactional Capacity (Phase 6)', () => {
         ride_id: testRideId,
         seat_count: 1,
       });
+      await requestService.cancelRequest(passenger1, req.id);
       await requestService.dismissRequest(passenger1, req.id);
 
       const storageKey = 'icem_join_requests_v1';
@@ -408,6 +420,41 @@ describe('Join Request Service & Transactional Capacity (Phase 6)', () => {
 
       const afterPurge = JSON.parse(localStorage.getItem(storageKey) || '{}');
       expect(afterPurge[req.id]).toBeUndefined();
+    });
+
+    it('persists prefilled and custom offered_amount so host sees offered fuel share', async () => {
+      // 1. Prefilled amount (e.g. ₹30)
+      const reqPrefilled = await requestService.createRequest(passenger1, {
+        ride_id: testRideId,
+        seat_count: 1,
+        offered_amount: 30,
+      });
+      expect(reqPrefilled.offered_amount).toBe(30);
+
+      const hostList = await requestService.listRequestsForRide(testRideId);
+      const found = hostList.find((r) => r.id === reqPrefilled.id);
+      expect(found).toBeDefined();
+      expect(found?.offered_amount).toBe(30);
+
+      // Verify host notification contains fuel share details
+      const hostNotifs = await notificationService.getUserNotifications(hostId);
+      const reqNotif = hostNotifs.find((n) => n.data?.request_id === reqPrefilled.id);
+      expect(reqNotif?.message).toContain('₹30 offered');
+    });
+
+    it('persists custom amount (e.g. ₹75) accurately', async () => {
+      const reqCustom = await requestService.createRequest(passenger2, {
+        ride_id: testRideId,
+        seat_count: 1,
+        offered_amount: 75,
+        specific_area_note: 'Main circle',
+      });
+      expect(reqCustom.offered_amount).toBe(75);
+
+      const hostList = await requestService.listRequestsForRide(testRideId);
+      const found = hostList.find((r) => r.id === reqCustom.id);
+      expect(found).toBeDefined();
+      expect(found?.offered_amount).toBe(75);
     });
   });
 });

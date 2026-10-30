@@ -10,30 +10,11 @@ import { isPointAlongCorridor } from './polyline.utils';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import type { RideRoute, RideWaypoint } from '@/features/rides/ride.types';
 
-const LOCAL_STORAGE_ROUTES_KEY = 'icem_connect_routes_db_v1';
-const LOCAL_STORAGE_WAYPOINTS_KEY = 'icem_connect_waypoints_db_v1';
+import { isValidUuid } from '@/lib/utils';
+import { getLocalData, saveLocalData, STORAGE_KEYS } from '@/lib/localStorage';
 
-function getLocalData<T>(key: string): Record<string, T> {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function isValidUuid(id?: string | null): boolean {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-}
-
-function saveLocalData<T>(key: string, data: Record<string, T>) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch {
-    // ignore
-  }
-}
+const LOCAL_STORAGE_ROUTES_KEY = STORAGE_KEYS.ROUTES;
+const LOCAL_STORAGE_WAYPOINTS_KEY = STORAGE_KEYS.WAYPOINTS;
 
 export const routeService = {
   /**
@@ -254,12 +235,12 @@ export const routeService = {
 
     if (isLive && isValidUuid(rideId)) {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('ride_waypoints')
           .select('*')
           .eq('ride_id', rideId)
           .order('sequence', { ascending: true });
-        if (data && data.length > 0) return data as unknown as RideWaypoint[];
+        if (!error && data) return data as unknown as RideWaypoint[];
       } catch (err) {
         console.warn('Live Supabase getWaypointsForRide error:', err);
       }

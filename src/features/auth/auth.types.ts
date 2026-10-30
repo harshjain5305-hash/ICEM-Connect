@@ -16,6 +16,7 @@ export interface StudentProfile {
   department: string | null;
   year: number | null;
   profile_image_url: string | null;
+  upi_id?: string | null;
   status: StudentStatus;
   rating_average: number;
   rating_count: number;
@@ -34,6 +35,7 @@ export interface PublicStudentProfile {
   department: string | null;
   year: number | null;
   profile_image_url: string | null;
+  upi_id?: string | null;
   status: StudentStatus;
   rating_average: number;
   rating_count: number;

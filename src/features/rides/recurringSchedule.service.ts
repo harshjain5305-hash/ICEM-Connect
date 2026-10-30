@@ -65,11 +65,14 @@ async function hydrateScheduleLocations(schedule: RecurringSchedule): Promise<Re
 
 export const recurringScheduleService = {
   /**
-   * Creates a new recurring commute schedule and materializes rides for upcoming weekdays.
+   * Creates a new recurring commute schedule and saves the template.
+   * By default, autoMaterializeDays is 0 (Option 1) so only the single ride created
+   * by the host is published, preventing unwanted database flooding of 5-7 upcoming rides.
    */
   async createSchedule(
     hostId: string,
-    input: CreateRecurringScheduleInput
+    input: CreateRecurringScheduleInput,
+    autoMaterializeDays: number = 0
   ): Promise<{ schedule: RecurringSchedule; materializedRides: Ride[] }> {
     if (!hostId) {
       throw new Error('Host student ID is required to create a recurring commute schedule');
@@ -107,8 +110,10 @@ export const recurringScheduleService = {
     schedules[id] = newSchedule;
     saveLocalSchedules(schedules);
 
-    // Automatically materialize published rides for the upcoming 7 weekdays
-    const materializedRides = await this.autoMaterializeUpcomingRides(newSchedule, 7);
+    // Option 1: Only materialize extra future rides if explicitly requested (autoMaterializeDays > 0)
+    const materializedRides = autoMaterializeDays > 0
+      ? await this.autoMaterializeUpcomingRides(newSchedule, autoMaterializeDays)
+      : [];
     const hydratedSchedule = await hydrateScheduleLocations(newSchedule);
 
     return { schedule: hydratedSchedule, materializedRides };
@@ -195,13 +200,31 @@ export const recurringScheduleService = {
   },
 
   /**
-   * Generates published rides for the upcoming N days for an active recurring schedule.
+   * Publishes the single next upcoming weekday ride from an active routine.
+   * Gives the host complete 1-click control to publish upcoming routine trips
+   * without spawning a full week of rides.
+   */
+  async publishNextRide(scheduleId: string): Promise<Ride | null> {
+    const schedules = getLocalSchedules();
+    const schedule = schedules[scheduleId];
+    if (!schedule) {
+      throw new Error(`Schedule ${scheduleId} not found`);
+    }
+
+    const rides = await this.autoMaterializeUpcomingRides(schedule, 7, 1);
+    return rides[0] || null;
+  },
+
+  /**
+   * Generates published rides for upcoming days for an active recurring schedule.
+   * Limits generation to maxRidesToCreate (defaults to daysAhead).
    */
   async autoMaterializeUpcomingRides(
     schedule: RecurringSchedule,
-    daysAhead: number = 7
+    daysAhead: number = 7,
+    maxRidesToCreate: number = 7
   ): Promise<Ride[]> {
-    if (!schedule.is_active) return [];
+    if (!schedule.is_active || maxRidesToCreate <= 0) return [];
 
     const existingRides = await rideRepository.listRidesByHost(schedule.host_id);
     const existingDates = new Set(
@@ -213,7 +236,7 @@ export const recurringScheduleService = {
     const generatedRides: Ride[] = [];
     const today = new Date();
 
-    for (let i = 0; i < daysAhead; i++) {
+    for (let i = 0; i < daysAhead && generatedRides.length < maxRidesToCreate; i++) {
       const targetDate = new Date();
       targetDate.setDate(today.getDate() + i);
 
@@ -237,6 +260,18 @@ export const recurringScheduleService = {
       const key = `${dateStr}_${schedule.departure_time}`;
       if (existingDates.has(key)) {
         continue; // Ride already materialized/exists for this date and time
+      }
+
+      // Skip if host already has an active ride on this date between same origin & destination
+      const duplicateRide = existingRides.find(
+        (r) =>
+          r.status !== 'CANCELLED' &&
+          r.departure_date === dateStr &&
+          r.origin_location_id === schedule.origin_location_id &&
+          r.destination_location_id === schedule.destination_location_id
+      );
+      if (duplicateRide) {
+        continue;
       }
 
       // Materialize morning commute ride

@@ -8,6 +8,10 @@ import { ReportModal } from '@/features/moderation/ReportModal';
 import { BlockUserModal } from '@/features/moderation/BlockUserModal';
 import { ActiveRideSessionBanner } from '@/features/realtime/ActiveRideSessionBanner';
 import { RideCoordinationChat } from '@/features/rides/RideCoordinationChat';
+import { paymentService } from '@/features/payments/payment.service';
+import { PaymentActionModal } from '@/features/payments/PaymentActionModal';
+import type { RidePayment } from '@/features/payments/payment.types';
+import { authService } from '@/features/auth/auth.service';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
@@ -25,6 +29,8 @@ import {
   Ban,
   Trash2,
   MessageSquare,
+  IndianRupee,
+  CheckCircle2,
 } from 'lucide-react';
 import { SwipeableItem } from '@/components/ui/SwipeableItem';
 
@@ -35,6 +41,13 @@ export interface MyRequestsViewProps {
 export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick }) => {
   const { user, profile } = useAuth();
   const [requests, setRequests] = useState<JoinRequest[]>([]);
+  const [paymentsMap, setPaymentsMap] = useState<Record<string, RidePayment>>({});
+  const [paymentModalState, setPaymentModalState] = useState<{
+    payment: RidePayment;
+    hostUpiId: string;
+    hostName: string;
+  } | null>(null);
+  const [isPaymentLoading, setIsPaymentLoading] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -49,8 +62,18 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
     setIsLoading(true);
     setActionError(null);
     try {
-      const data = await requestService.listRequestsByStudent(user.id);
+      const [data, studentPayments] = await Promise.all([
+        requestService.listRequestsByStudent(user.id),
+        paymentService.listStudentPayments(user.id).catch(() => []),
+      ]);
       setRequests(data);
+
+      const pMap: Record<string, RidePayment> = {};
+      studentPayments.forEach((p) => {
+        if (p.request_id) pMap[p.request_id] = p;
+        pMap[`ride_${p.ride_id}`] = p;
+      });
+      setPaymentsMap(pMap);
     } catch (err: unknown) {
       console.error('Failed to load student requests:', err);
     } finally {
@@ -61,6 +84,41 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
+
+  useEffect(() => {
+    const handlePaymentsUpdate = () => {
+      fetchRequests();
+    };
+    window.addEventListener('icem:payments_updated', handlePaymentsUpdate);
+    return () => window.removeEventListener('icem:payments_updated', handlePaymentsUpdate);
+  }, [fetchRequests]);
+
+  const handleOpenPayModal = async (req: JoinRequest) => {
+    if (!user || !req.ride) return;
+    setIsPaymentLoading(req.id);
+    setActionError(null);
+    try {
+      const hostProfile = await authService.getProfile(req.ride.host_id).catch(() => null);
+      const hostUpi = hostProfile?.upi_id || '';
+      const payment = await paymentService.createOrGetPayment({
+        ride_id: req.ride_id,
+        request_id: req.id,
+        payer_id: user.id,
+        payee_id: req.ride.host_id,
+        amount: req.offered_amount || 0,
+      });
+      setPaymentModalState({
+        payment,
+        hostUpiId: hostUpi,
+        hostName: hostProfile?.name || 'Ride Host',
+      });
+    } catch (err: unknown) {
+      console.error('Failed to initiate payment:', err);
+      setActionError((err as Error).message || 'Failed to initiate payment');
+    } finally {
+      setIsPaymentLoading(null);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -90,23 +148,39 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
     }
   };
 
+  const isRequestDeletable = (req: JoinRequest): boolean => {
+    // Live ride cannot be deleted while in progress
+    if (req.ride?.status === 'ACTIVE') return false;
+    // Host approval pending ride cannot be deleted
+    if (req.status === 'PENDING') return false;
+    return true;
+  };
+
   const handleDismissRequest = async (requestId: string) => {
     if (!user) return;
+    const target = requests.find((r) => r.id === requestId);
+    if (target && !isRequestDeletable(target)) {
+      if (target.status === 'PENDING') {
+        setActionError('Cannot delete a ride while host approval is pending. You may cancel the request instead.');
+      } else if (target.ride?.status === 'ACTIVE') {
+        setActionError('Cannot delete an active live ride in progress.');
+      }
+      return;
+    }
+
     setRequests((prev) => prev.filter((r) => r.id !== requestId));
     try {
       await requestService.dismissRequest(user.id, requestId);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Dismiss request error:', err);
+      setActionError((err as Error).message || 'Failed to dismiss request');
+      await fetchRequests();
     }
   };
 
   const handleClearInactive = async () => {
     if (!user) return;
-    setRequests((prev) =>
-      prev.filter(
-        (r) => r.status === 'PENDING' || (r.status === 'ACCEPTED' && r.ride?.status !== 'COMPLETED')
-      )
-    );
+    setRequests((prev) => prev.filter((r) => !isRequestDeletable(r)));
     try {
       await requestService.clearInactiveRequests(user.id);
     } catch (err) {
@@ -217,54 +291,59 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
         </Card>
       ) : (
         <div className="space-y-3">
-          {requests.map((req) => (
-            <SwipeableItem
-              key={req.id}
-              onDelete={() => handleDismissRequest(req.id)}
-              deleteLabel="Dismiss"
-            >
-              <Card className="overflow-hidden border border-border shadow-sm">
-                <CardHeader className="p-4 pb-2 bg-muted/20 flex flex-row items-center justify-between border-b border-border/60">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5 text-primary" />
-                      {req.ride?.departure_date || 'Upcoming'}
-                    </span>
-                    <span className="text-xs text-muted-foreground">&bull;</span>
-                    <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-primary" />
-                      {req.ride?.departure_time || 'Scheduled'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {getStatusBadge(req.status)}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDismissRequest(req.id);
-                      }}
-                      title="Dismiss request (auto-deletes in 2 days)"
-                      aria-label="Dismiss request"
-                      className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </CardHeader>
+          {requests.map((req) => {
+            const deletable = isRequestDeletable(req);
+            return (
+              <SwipeableItem
+                key={req.id}
+                onDelete={() => handleDismissRequest(req.id)}
+                disabled={!deletable}
+                deleteLabel="Dismiss"
+              >
+                <Card className="overflow-hidden border border-border shadow-sm">
+                  <CardHeader className="p-4 pb-2 bg-muted/20 flex flex-row items-center justify-between border-b border-border/60">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-primary" />
+                        {req.ride?.departure_date || 'Past Trip'}
+                      </span>
+                      <span className="text-xs text-muted-foreground">&bull;</span>
+                      <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-primary" />
+                        {req.ride?.departure_time || 'Scheduled'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(req.status)}
+                      {deletable && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDismissRequest(req.id);
+                          }}
+                          title="Delete from booked list"
+                          aria-label="Delete request"
+                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </CardHeader>
 
-                <CardContent className="p-4 space-y-3 text-xs">
-                  {/* ROUTE CORRIDOR */}
-                  <div className="rounded-lg bg-muted/40 p-2.5 space-y-1">
-                    <div className="flex items-center gap-1.5 text-foreground font-medium">
-                      <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                      <span>Origin / Pickup: {req.ride?.origin?.name || 'ICEM Origin'}</span>
+                  <CardContent className="p-4 space-y-3 text-xs">
+                    {/* ROUTE CORRIDOR */}
+                    <div className="rounded-lg bg-muted/40 p-2.5 space-y-1">
+                      <div className="flex items-center gap-1.5 text-foreground font-medium">
+                        <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                        <span>Origin / Pickup: {req.ride?.origin?.name || (req.ride ? 'ICEM Campus Route' : 'Archived Route')}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-foreground font-medium">
+                        <MapPin className="h-3.5 w-3.5 text-[#E85C0D] shrink-0" />
+                        <span>Destination / Drop: {req.ride?.destination?.name || (req.ride ? 'ICEM Campus Route' : 'Archived Route')}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-foreground font-medium">
-                      <MapPin className="h-3.5 w-3.5 text-[#E85C0D] shrink-0" />
-                      <span>Destination / Drop: {req.ride?.destination?.name || 'Destination'}</span>
-                    </div>
-                  </div>
 
                   {/* REALTIME ACTIVE RIDE SESSION (Phase 8) */}
                   {req.status === 'ACCEPTED' && req.ride && (
@@ -293,6 +372,102 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
                       </span>
                     )}
                   </div>
+
+                  {/* FUEL CONTRIBUTION & PAYMENT STATUS */}
+                  {req.offered_amount !== undefined && req.offered_amount > 0 && (
+                    <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                          <IndianRupee className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-foreground">
+                              Fuel Share: ₹{req.offered_amount}
+                            </span>
+                            {req.status === 'ACCEPTED' ? (
+                              (() => {
+                                const p = paymentsMap[req.id] || paymentsMap[`ride_${req.ride_id}`];
+                                if (!p || p.status === 'PENDING') {
+                                  return (
+                                    <Badge variant="warning" className="text-[10px]">
+                                      Payment Pending
+                                    </Badge>
+                                  );
+                                }
+                                if (p.status === 'PAID_PENDING_CONFIRMATION') {
+                                  return (
+                                    <Badge variant="cyan" className="text-[10px]">
+                                      Awaiting Host Confirmation
+                                    </Badge>
+                                  );
+                                }
+                                if (p.status === 'CONFIRMED') {
+                                  return (
+                                    <Badge variant="success" className="text-[10px] gap-1">
+                                      <CheckCircle2 className="h-3 w-3" /> Confirmed
+                                    </Badge>
+                                  );
+                                }
+                                if (p.status === 'DISPUTED') {
+                                  return (
+                                    <Badge variant="destructive" className="text-[10px]">
+                                      Disputed
+                                    </Badge>
+                                  );
+                                }
+                                return null;
+                              })()
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                                Offered with Request
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            {req.status === 'ACCEPTED' ? (
+                              (() => {
+                                const p = paymentsMap[req.id] || paymentsMap[`ride_${req.ride_id}`];
+                                if (!p || p.status === 'PENDING') {
+                                  return 'Seat confirmed! Tap below to pay host directly via PhonePe, GPay, Paytm or Cash.';
+                                }
+                                if (p.status === 'PAID_PENDING_CONFIRMATION') {
+                                  return `You marked ₹${p.amount} paid via ${p.method}. Host will confirm receipt once received.`;
+                                }
+                                if (p.status === 'CONFIRMED') {
+                                  return 'Host confirmed receipt of your fuel share. Thank you for carpooling!';
+                                }
+                                if (p.status === 'DISPUTED') {
+                                  return `Host indicated: "${p.dispute_reason || 'Not received'}". Please verify UPI or retry.`;
+                                }
+                                return '';
+                              })()
+                            ) : (
+                              'Voluntary contribution to be settled directly with the host once approved.'
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      {req.status === 'ACCEPTED' && (() => {
+                        const p = paymentsMap[req.id] || paymentsMap[`ride_${req.ride_id}`];
+                        if (!p || p.status === 'PENDING' || p.status === 'DISPUTED') {
+                          return (
+                            <Button
+                              size="sm"
+                              disabled={isPaymentLoading === req.id}
+                              onClick={() => handleOpenPayModal(req)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 font-semibold h-8 shrink-0"
+                            >
+                              <IndianRupee className="h-3.5 w-3.5" />
+                              {isPaymentLoading === req.id ? 'Loading...' : `Pay ₹${req.offered_amount} via UPI`}
+                            </Button>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
 
                   {/* ACTIONS */}
                   <div className="pt-2 border-t border-border/60 flex items-center justify-between flex-wrap gap-2">
@@ -401,8 +576,9 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
                 </CardContent>
               </Card>
             </SwipeableItem>
-          ))}
-        </div>
+          );
+        })}
+      </div>
       )}
 
       {/* RATING MODAL */}
@@ -442,6 +618,21 @@ export const MyRequestsView: React.FC<MyRequestsViewProps> = ({ onFindRidesClick
           onClose={() => setBlockUser(null)}
           targetStudent={blockUser}
           onBlocked={() => {
+            fetchRequests();
+          }}
+        />
+      )}
+
+      {/* UPI / CASH DIRECT PAYMENT MODAL */}
+      {paymentModalState && (
+        <PaymentActionModal
+          isOpen={Boolean(paymentModalState)}
+          onClose={() => setPaymentModalState(null)}
+          payment={paymentModalState.payment}
+          hostUpiId={paymentModalState.hostUpiId}
+          hostName={paymentModalState.hostName}
+          onPaymentSuccess={() => {
+            setPaymentModalState(null);
             fetchRequests();
           }}
         />

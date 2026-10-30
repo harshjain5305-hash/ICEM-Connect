@@ -20,11 +20,29 @@ export const isSupabaseConfigured = (): boolean => {
   return true;
 };
 
+export const CANONICAL_SITE_URL = 'https://icem-connect.vercel.app/';
+
+/**
+ * Returns the canonical redirect URL for Supabase Auth flows
+ * (email confirmation links, password reset links, and recovery).
+ * Strictly defaults to production (https://icem-connect.vercel.app/) to eliminate
+ * unwanted local (localhost:3000) redirects in student verification emails.
+ */
+export const getAuthRedirectUrl = (): string => {
+  const envUrl = import.meta.env.VITE_SITE_URL || import.meta.env.VITE_APP_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    const trimmed = envUrl.trim();
+    return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
+  }
+  return CANONICAL_SITE_URL;
+};
+
 export const getSupabaseConfig = () => ({
   url: supabaseUrl,
   hasKey: Boolean(supabaseAnonKey),
   isConfigured: isSupabaseConfigured(),
   institutionalDomain: import.meta.env.VITE_INSTITUTION_EMAIL_DOMAIN || 'indiraicem.ac.in',
+  siteUrl: getAuthRedirectUrl(),
 });
 
 // Provide a stable client instance

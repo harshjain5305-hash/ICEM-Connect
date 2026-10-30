@@ -50,7 +50,7 @@ export const createBlockSchema = z.object({
 export type CreateBlockSchemaInput = z.infer<typeof createBlockSchema>;
 
 export const updateReportStatusSchema = z.object({
-  status: z.enum(['PENDING', 'REVIEWED', 'RESOLVED', 'DISMISSED']),
+  status: z.enum(['PENDING', 'UNDER_REVIEW', 'REVIEWED', 'RESOLVED', 'DISMISSED']),
   resolution_note: z
     .string()
     .trim()

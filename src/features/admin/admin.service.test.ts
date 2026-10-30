@@ -198,4 +198,62 @@ describe('Admin Service & Moderation Console (Phase 7)', () => {
       ).rejects.toThrow(/Forbidden/i);
     });
   });
+
+  describe('Administrative Location & Waypoint Management', () => {
+    it('allows admin to list, create, update, and toggle transit locations', async () => {
+      const initialLocs = await adminService.listLocations(adminId);
+      expect(initialLocs.length).toBeGreaterThanOrEqual(15);
+
+      // Create new stop
+      const created = await adminService.createLocation(adminId, {
+        name: 'Talegaon Toll Plaza Junction',
+        type: 'MAIN_ROAD',
+        latitude: 18.735,
+        longitude: 73.685,
+        address: 'Old Mumbai-Pune Highway, Talegaon Toll',
+        is_active: true,
+      });
+
+      expect(created.id).toBeDefined();
+      expect(created.name).toBe('Talegaon Toll Plaza Junction');
+      expect(created.is_active).toBe(true);
+
+      // Verify in list
+      const afterCreate = await adminService.listLocations(adminId);
+      expect(afterCreate.some((l) => l.id === created.id)).toBe(true);
+
+      // Update location
+      const updated = await adminService.updateLocation(adminId, created.id, {
+        name: 'Talegaon Toll Plaza (Updated Bay)',
+        type: 'BUS_STOP',
+      });
+      expect(updated.name).toBe('Talegaon Toll Plaza (Updated Bay)');
+      expect(updated.type).toBe('BUS_STOP');
+
+      // Toggle active status
+      const deactivated = await adminService.toggleLocationStatus(adminId, created.id, false);
+      expect(deactivated.is_active).toBe(false);
+    });
+
+    it('strictly forbids regular students from creating or editing transit locations', async () => {
+      await expect(
+        adminService.createLocation(regularStudentId, {
+          name: 'Hacked Node',
+          type: 'CUSTOM',
+          latitude: 18.7,
+          longitude: 73.7,
+        })
+      ).rejects.toThrow(/Forbidden/i);
+
+      await expect(
+        adminService.updateLocation(regularStudentId, 'loc_somatne_phata', {
+          name: 'Defaced Name',
+        })
+      ).rejects.toThrow(/Forbidden/i);
+
+      await expect(
+        adminService.toggleLocationStatus(regularStudentId, 'loc_somatne_phata', false)
+      ).rejects.toThrow(/Forbidden/i);
+    });
+  });
 });

@@ -10,7 +10,7 @@ export type ReportCategory =
   | 'SUSPICIOUS_ACTIVITY'
   | 'OTHER';
 
-export type ReportStatus = 'PENDING' | 'REVIEWED' | 'RESOLVED' | 'DISMISSED';
+export type ReportStatus = 'PENDING' | 'UNDER_REVIEW' | 'REVIEWED' | 'RESOLVED' | 'DISMISSED';
 
 export interface UserReport {
   id: string;

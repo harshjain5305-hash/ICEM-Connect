@@ -8,7 +8,27 @@ import { DEPARTMENTS } from '@/features/auth/auth.schema';
 import { moderationService } from '@/features/moderation/moderation.service';
 import type { UserBlock } from '@/features/moderation/moderation.types';
 import { useTheme } from '@/context/ThemeContext';
-import { User, ShieldCheck, Star, Lock, LogOut, Check, Edit2, ShieldOff, Sun, Moon, Monitor } from 'lucide-react';
+import { PublicStudentCard } from './PublicStudentCard';
+import { paymentService } from '@/features/payments/payment.service';
+import { PaymentLedgerModal } from '@/features/payments/PaymentLedgerModal';
+import type { StudentPaymentStats } from '@/features/payments/payment.types';
+import {
+  User,
+  ShieldCheck,
+  Star,
+  Lock,
+  LogOut,
+  Check,
+  Edit2,
+  ShieldOff,
+  Sun,
+  Moon,
+  Monitor,
+  IndianRupee,
+  QrCode,
+  Copy,
+  History,
+} from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
   const { profile, logout, updateProfile, roles } = useAuth();
@@ -16,9 +36,35 @@ export const ProfileView: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [department, setDepartment] = useState(profile?.department || '');
   const [year, setYear] = useState<number | ''>(profile?.year || '');
+  const [upiId, setUpiId] = useState(profile?.upi_id || '');
+  const [paymentStats, setPaymentStats] = useState<StudentPaymentStats | null>(null);
+  const [isLedgerOpen, setIsLedgerOpen] = useState(false);
+  const [copiedUpi, setCopiedUpi] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'destructive'; text: string } | null>(null);
   const [blockedUsers, setBlockedUsers] = useState<UserBlock[]>([]);
+
+  useEffect(() => {
+    if (profile?.upi_id) {
+      setUpiId(profile.upi_id);
+    }
+  }, [profile?.upi_id]);
+
+  useEffect(() => {
+    if (profile?.id) {
+      paymentService.getStudentPaymentStats(profile.id).then(setPaymentStats).catch(() => {});
+    }
+  }, [profile?.id]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      if (profile?.id) {
+        paymentService.getStudentPaymentStats(profile.id).then(setPaymentStats).catch(() => {});
+      }
+    };
+    window.addEventListener('icem:payments_updated', handleUpdate);
+    return () => window.removeEventListener('icem:payments_updated', handleUpdate);
+  }, [profile?.id]);
 
   useEffect(() => {
     if (profile?.id) {
@@ -44,10 +90,21 @@ export const ProfileView: React.FC = () => {
     setSaving(true);
     setMessage(null);
 
+    const trimmedUpi = upiId.trim();
+    if (trimmedUpi && !/^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+$/.test(trimmedUpi)) {
+      setMessage({
+        type: 'destructive',
+        text: 'Invalid UPI ID format. Please use a format like mobile@paytm or name@oksbi (e.g. 9876543210@paytm).',
+      });
+      setSaving(false);
+      return;
+    }
+
     try {
       await updateProfile({
         department: department || null,
         year: year ? Number(year) : null,
+        upi_id: trimmedUpi || null,
       });
       setIsEditing(false);
       setMessage({ type: 'success', text: 'Profile updated successfully.' });
@@ -113,7 +170,9 @@ export const ProfileView: React.FC = () => {
               <span>Internal Verification Identifier (PRN)</span>
             </div>
             <p className="font-mono text-xs text-foreground">
-              {profile.prn.slice(0, 3)}••••{profile.prn.slice(-2)}
+              {profile.prn && profile.prn.length > 5
+                ? `${profile.prn.slice(0, 3)}••••${profile.prn.slice(-2)}`
+                : '••••••••'}
             </p>
             <p className="text-[11px] text-muted-foreground pt-1">
               Your PRN is confidential and verified against institutional records. It is never displayed publicly to passengers or hosts.
@@ -159,6 +218,23 @@ export const ProfileView: React.FC = () => {
                 </select>
               </div>
 
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1 flex items-center justify-between">
+                  <span>UPI ID (VPA) for Fuel Contributions</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">Optional</span>
+                </label>
+                <input
+                  type="text"
+                  value={upiId}
+                  onChange={(e) => setUpiId(e.target.value)}
+                  placeholder="e.g. name@oksbi, 9876543210@paytm"
+                  className="flex h-11 w-full rounded-lg border border-input bg-card px-3 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Passengers will scan or tap to send voluntary fuel contributions directly to your UPI ID via Google Pay, PhonePe, or Paytm.
+                </p>
+              </div>
+
               <div className="flex items-center gap-2 pt-2">
                 <Button type="submit" size="sm" isLoading={saving} className="gap-1 flex-1">
                   <Check className="h-3.5 w-3.5" /> Save Changes
@@ -192,6 +268,34 @@ export const ProfileView: React.FC = () => {
                   {profile.status}
                 </Badge>
               </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <QrCode className="h-3.5 w-3.5 text-primary" /> UPI ID:
+                </span>
+                {profile.upi_id ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-xs font-semibold text-foreground bg-muted/60 px-2 py-0.5 rounded">
+                      {profile.upi_id}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(profile.upi_id!);
+                        setCopiedUpi(true);
+                        setTimeout(() => setCopiedUpi(false), 2000);
+                      }}
+                      className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      title="Copy UPI ID"
+                    >
+                      {copiedUpi ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground italic text-[11px]">
+                    Not set up (Tap Edit to add)
+                  </span>
+                )}
+              </div>
 
               <div className="pt-3">
                 <Button
@@ -205,6 +309,77 @@ export const ProfileView: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Fuel Sharing & Earnings Card */}
+          <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold">
+                  <IndianRupee className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-foreground block">
+                    Fuel Cost Sharing
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Direct peer-to-peer settlement
+                  </span>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsLedgerOpen(true)}
+                className="h-7 text-xs border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 gap-1 font-semibold"
+              >
+                <History className="h-3 w-3" /> Ledger
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-center pt-1">
+              <div className="rounded-lg bg-card/60 p-2.5 border border-border/60">
+                <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+                  ₹{paymentStats ? paymentStats.totalEarned.toFixed(0) : '0'}
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  Received ({paymentStats?.receivedCount || 0} rides)
+                </span>
+              </div>
+              <div className="rounded-lg bg-card/60 p-2.5 border border-border/60">
+                <div className="text-base font-bold text-blue-600 dark:text-blue-400">
+                  ₹{paymentStats ? paymentStats.totalPaid.toFixed(0) : '0'}
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  Contributed ({paymentStats?.paidCount || 0} rides)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Public Profile Privacy Preview (Design.md §7) */}
+          <div className="pt-3 border-t border-border space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                <span>How Peers See You (Public View)</span>
+              </span>
+              <span className="text-[10px] text-muted-foreground font-mono">Confidential PRN &amp; Phone Hidden</span>
+            </div>
+            <PublicStudentCard
+              student={{
+                id: profile.id,
+                name: profile.name,
+                department: profile.department,
+                year: profile.year,
+                profile_image_url: profile.profile_image_url,
+                status: profile.status,
+                rating_average: profile.rating_average,
+                rating_count: profile.rating_count,
+                created_at: profile.created_at,
+              }}
+              roleBadgeText="You"
+            />
+          </div>
 
           {/* Blocked Accounts Management */}
           {blockedUsers.length > 0 && (
@@ -300,6 +475,12 @@ export const ProfileView: React.FC = () => {
           </Button>
         </CardFooter>
       </Card>
+
+      <PaymentLedgerModal
+        isOpen={isLedgerOpen}
+        onClose={() => setIsLedgerOpen(false)}
+        studentId={profile.id}
+      />
     </div>
   );
 };

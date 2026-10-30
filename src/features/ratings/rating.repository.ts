@@ -4,29 +4,10 @@ import { notificationService } from '@/features/notifications/notification.servi
 import type { RideRating, CreateRatingInput, RatingResult } from './rating.types';
 import type { PublicStudentInfo } from '@/features/requests/request.types';
 
-const LOCAL_STORAGE_RATINGS_KEY = 'icem_ratings_v1';
+import { isValidUuid } from '@/lib/utils';
+import { getLocalData, saveLocalData, STORAGE_KEYS } from '@/lib/localStorage';
 
-function isValidUuid(id?: string | null): boolean {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-}
-
-function getLocalData<T>(key: string): Record<string, T> {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLocalData<T>(key: string, data: Record<string, T>): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (err) {
-    console.error(`Failed to save localStorage key ${key}:`, err);
-  }
-}
+const LOCAL_STORAGE_RATINGS_KEY = STORAGE_KEYS.RATINGS;
 
 async function getPublicStudentInfo(studentId: string): Promise<PublicStudentInfo> {
   const profile = await authService.getProfile(studentId);
@@ -173,7 +154,7 @@ export const ratingRepository = {
           .eq('ride_id', rideId)
           .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           for (const item of data) {
             const r = item as unknown as RideRating;
             r.reviewer = await getPublicStudentInfo(r.reviewer_id);
@@ -214,7 +195,7 @@ export const ratingRepository = {
           .eq('reviewee_id', userId)
           .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           for (const item of data) {
             const r = item as unknown as RideRating;
             r.reviewer = await getPublicStudentInfo(r.reviewer_id);

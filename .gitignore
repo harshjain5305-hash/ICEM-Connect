@@ -34,6 +34,11 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
 
 # OS generated files
 .DS_Store

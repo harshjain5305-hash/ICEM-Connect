@@ -242,9 +242,17 @@ export const rideService = {
   },
 
   /**
-   * Dismisses a ride from the host's UI immediately, marking it for 2-day auto-purge from the database.
+   * Permanently deletes a ride from the database, local storage, Home, and Find Ride sections.
    */
   async dismissRide(hostId: string, rideId: string): Promise<void> {
+    if (!hostId || !rideId) return;
+    await rideRepository.dismissRide(hostId, rideId);
+  },
+
+  /**
+   * Alias for dismissRide — permanently deletes a ride directly from database and UI.
+   */
+  async deleteRide(hostId: string, rideId: string): Promise<void> {
     if (!hostId || !rideId) return;
     await rideRepository.dismissRide(hostId, rideId);
   },

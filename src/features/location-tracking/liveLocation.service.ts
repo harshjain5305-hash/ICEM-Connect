@@ -7,11 +7,7 @@ import { realtimeService } from '@/features/realtime/realtime.service';
 import { GPSKalmanFilter } from './gpsKalmanFilter';
 import { liveLocationUpdateSchema } from './location.schema';
 import type { LiveLocationUpdate } from './location.types';
-
-function isValidUuid(id?: string | null): boolean {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-}
+import { isValidUuid } from '@/lib/utils';
 
 // Approximate Haversine distance in meters
 function computeDistanceMeters(

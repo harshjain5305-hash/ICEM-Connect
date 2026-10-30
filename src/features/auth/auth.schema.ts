@@ -66,8 +66,34 @@ export const profileUpdateSchema = z.object({
     .optional()
     .nullable(),
   profile_image_url: z.string().url('Must be a valid URL').optional().nullable(),
+  upi_id: z
+    .string()
+    .trim()
+    .regex(
+      /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z0-9._-]{2,64}$/,
+      'Please enter a valid UPI ID (e.g. mobile@paytm, user@okhdfcbank)'
+    )
+    .optional()
+    .nullable()
+    .or(z.literal('')),
 });
+
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+});
+
+export const resetPasswordSchema = z
+  .object({
+    password: z.string().min(6, 'Password must be at least 6 characters'),
+    confirmPassword: z.string().min(6, 'Please confirm your password'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

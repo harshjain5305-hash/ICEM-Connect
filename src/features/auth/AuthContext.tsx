@@ -16,6 +16,9 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateProfile: (input: ProfileUpdateInput) => Promise<void>;
   refreshSession: () => Promise<void>;
+  sendPasswordResetEmail?: (email: string) => Promise<void>;
+  updatePassword?: (newPassword: string) => Promise<void>;
+  resendVerificationEmail?: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -106,6 +109,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(updated);
   };
 
+  const sendPasswordResetEmail = async (email: string) => {
+    await authService.sendPasswordResetEmail(email);
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    await authService.updatePassword(newPassword);
+    await refreshSession();
+  };
+
+  const resendVerificationEmail = async (email: string) => {
+    await authService.resendVerificationEmail(email);
+  };
+
   const isAuthenticated = Boolean(user && profile && profile.status === 'ACTIVE');
   const isAdmin = roles.includes('ADMIN');
 
@@ -123,6 +139,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         updateProfile,
         refreshSession,
+        sendPasswordResetEmail,
+        updatePassword,
+        resendVerificationEmail,
       }}
     >
       {children}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Ride } from './ride.types';
 import type { RideStatus } from '@/types/database';
 import { useAuth } from '@/features/auth/useAuth';
@@ -8,6 +8,7 @@ import { RouteMapPreview } from '@/features/routes/RouteMapPreview';
 import { WaypointSequenceList } from '@/features/routes/WaypointSequenceList';
 import { HostRequestsSection } from '@/features/requests/HostRequestsSection';
 import { JoinRequestModal } from '@/features/requests/JoinRequestModal';
+import { requestService } from '@/features/requests/request.service';
 import { ActiveRideSessionBanner } from '@/features/realtime/ActiveRideSessionBanner';
 import { RideCoordinationChat } from './RideCoordinationChat';
 import { Badge } from '@/components/ui/Badge';
@@ -26,10 +27,12 @@ import {
   XCircle,
   FileText,
   AlertTriangle,
+  AlertCircle,
   MessageSquare,
   Radio,
   Milestone,
   Info,
+  Trash2,
 } from 'lucide-react';
 
 export type RideDetailTab = 'overview' | 'waypoints' | 'tracking' | 'chat' | 'requests';
@@ -39,6 +42,7 @@ export interface RideDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRideUpdated?: (updatedRide: Ride) => void;
+  onRideDeleted?: (deletedRideId: string) => void;
   initialTab?: RideDetailTab;
 }
 
@@ -47,6 +51,7 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
   isOpen,
   onClose,
   onRideUpdated,
+  onRideDeleted,
   initialTab = 'overview',
 }) => {
   const { user, profile } = useAuth();
@@ -55,13 +60,67 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
   const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState<boolean>(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [showJoinModal, setShowJoinModal] = useState<boolean>(false);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState<number>(0);
 
   if (!isOpen) return null;
 
   const isHost = Boolean(user && user.id === currentRide.host_id);
+
+  const handleDeleteRide = async () => {
+    if (!user) return;
+    setIsActionLoading(true);
+    setActionError(null);
+    try {
+      await rideService.dismissRide(user.id, currentRide.id);
+      onRideDeleted?.(currentRide.id);
+      onClose();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setActionError(err.message);
+      } else {
+        setActionError('Failed to delete ride');
+      }
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
   const statusMeta = RIDE_STATUS_METADATA[currentRide.status];
   const isTripActive = currentRide.status === 'ACTIVE';
+
+  useEffect(() => {
+    if (!isHost) return;
+    let isMounted = true;
+    const checkRequests = async () => {
+      try {
+        const reqs = await requestService.listRequestsForRide(currentRide.id);
+        if (isMounted) {
+          const pending = reqs.filter((r) => r.status === 'PENDING').length;
+          setPendingRequestsCount(pending);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    checkRequests();
+
+    const handleUpdate = () => {
+      checkRequests();
+    };
+    window.addEventListener('icem:join_requests_updated', handleUpdate);
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        checkRequests();
+      }
+    }, 15000);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('icem:join_requests_updated', handleUpdate);
+      clearInterval(timer);
+    };
+  }, [isHost, currentRide.id]);
 
   const completedPassedSequences = React.useMemo(() => {
     if (currentRide.status === 'COMPLETED' && currentRide.waypoints) {
@@ -127,6 +186,7 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
       id: 'requests',
       label: 'Requests',
       icon: <Users className="h-4 w-4" />,
+      badge: pendingRequestsCount > 0 ? `${pendingRequestsCount}` : undefined,
     });
   }
 
@@ -137,7 +197,7 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
       aria-labelledby="ride-detail-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
     >
-      <div className="relative w-full max-w-xl rounded-2xl border border-border bg-card shadow-2xl overflow-hidden my-4 sm:my-8 flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-xl rounded-2xl border border-border bg-card shadow-2xl overflow-hidden my-auto max-h-[92dvh] flex flex-col">
         {/* MODAL HEADER */}
         <div className="flex items-center justify-between border-b border-border/80 px-4 sm:px-6 py-3.5 bg-muted/40 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -235,7 +295,13 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
                 {tab.icon}
                 <span>{tab.label}</span>
                 {tab.badge && (
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500 text-white font-bold animate-pulse">
+                  <span
+                    className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                      tab.id === 'requests'
+                        ? 'bg-[#E85C0D] text-white animate-pulse'
+                        : 'bg-emerald-500 text-white animate-pulse'
+                    }`}
+                  >
                     {tab.badge}
                   </span>
                 )}
@@ -256,6 +322,32 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-4 animate-in fade-in-50 duration-150">
+              {/* Host Incoming Requests Urgent Alert */}
+              {isHost && pendingRequestsCount > 0 && (
+                <div className="rounded-xl border border-[#E85C0D]/40 bg-[#E85C0D]/10 p-3.5 flex items-center justify-between gap-3 animate-pulse">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E85C0D]/20 text-[#E85C0D] shrink-0">
+                      <AlertCircle className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-xs text-[#E85C0D]">
+                        {pendingRequestsCount} Pending Seat Request{pendingRequestsCount > 1 ? 's' : ''}
+                      </span>
+                      <p className="text-[11px] text-muted-foreground">
+                        Batchmate is waiting for your approval to confirm their seat.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => setActiveTab('requests')}
+                    className="h-7 text-xs bg-[#E85C0D] hover:bg-[#d04f08] text-white shrink-0 font-semibold"
+                  >
+                    Review Now
+                  </Button>
+                </div>
+              )}
+
               {/* Status Banner */}
               <div className={`rounded-xl border p-3.5 space-y-1 ${statusMeta.bgClass}`}>
                 <div className="flex items-center justify-between">
@@ -397,13 +489,39 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
                           variant="outline"
                           disabled={isActionLoading}
                           onClick={() => setShowCancelConfirm(true)}
-                          className="text-destructive hover:bg-destructive/10"
+                          className="text-amber-600 hover:bg-amber-500/10 border-amber-600/30"
                         >
                           Cancel Ride
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={isActionLoading}
+                          onClick={() => setShowDeleteConfirm(true)}
+                          className="text-destructive hover:bg-destructive/10 border-destructive/20 gap-1.5"
+                        >
+                          <Trash2 className="h-4 w-4" /> Delete
                         </Button>
                       </div>
                       <p className="text-[11px] text-muted-foreground">
                         Starting the ride transitions status to <code>ACTIVE</code> and activates live GPS room.
+                      </p>
+                    </div>
+                  )}
+
+                  {(currentRide.status === 'CANCELLED' || currentRide.status === 'COMPLETED') && (
+                    <div className="space-y-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button
+                          variant="outline"
+                          disabled={isActionLoading}
+                          onClick={() => setShowDeleteConfirm(true)}
+                          className="text-destructive hover:bg-destructive/10 border-destructive/20 gap-1.5"
+                        >
+                          <Trash2 className="h-4 w-4" /> Delete Ride Permanently
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Permanently removes this ride from the database and all campus listings.
                       </p>
                     </div>
                   )}
@@ -430,6 +548,36 @@ export const RideDetailModal: React.FC<RideDetailModalProps> = ({
                       <p className="text-[11px] text-muted-foreground">
                         Completing marks journey finished and starts the 3-hour chat retention window.
                       </p>
+                    </div>
+                  )}
+
+                  {showDeleteConfirm && currentRide.status !== 'ACTIVE' && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3.5 space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-destructive">
+                        <AlertTriangle className="h-4 w-4" /> Confirm Ride Deletion
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Are you sure you want to permanently delete this ride? It will be deleted from the database itself and immediately disappear from Home and Find Ride sections.
+                      </p>
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={isActionLoading}
+                          onClick={handleDeleteRide}
+                          className="gap-1.5"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Delete from Database
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isActionLoading}
+                          onClick={() => setShowDeleteConfirm(false)}
+                        >
+                          Keep Ride
+                        </Button>
+                      </div>
                     </div>
                   )}
 

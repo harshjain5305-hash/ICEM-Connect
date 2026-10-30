@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
-import type { Location, LocationSearchInput } from './location.schema';
+import type { Location, LocationSearchInput, CreateLocationInput, UpdateLocationInput } from './location.schema';
+import { STORAGE_KEYS, getLocalData, saveLocalData } from '@/lib/localStorage';
 
 export const SEED_LOCATIONS: Location[] = [
   {
@@ -139,28 +140,32 @@ export const SEED_LOCATIONS: Location[] = [
   },
 ];
 
+function getMergedLocalLocations(): Location[] {
+  const custom = getLocalData<Location>(STORAGE_KEYS.LOCATIONS);
+  const map = new Map<string, Location>();
+
+  for (const s of SEED_LOCATIONS) {
+    map.set(s.id, { ...s });
+  }
+
+  for (const [id, loc] of Object.entries(custom)) {
+    map.set(id, loc);
+  }
+
+  return Array.from(map.values());
+}
+
 export const locationService = {
   /**
    * Searches locations by text query and optional type filter.
    * Conforms to Phase 2 deliverable requirement in Phases.md §6.
    */
   async search(params: LocationSearchInput = {}): Promise<Location[]> {
-    const { query = '', type, limit = 10 } = params;
+    const { query = '', type, limit = 50 } = params;
     const isLive = isSupabaseConfigured();
 
     if (isLive) {
       try {
-        const { data, error } = await supabase.rpc('search_locations', {
-          p_query: query,
-          p_type: type,
-          p_limit: limit,
-        });
-
-        if (!error && data) {
-          return data as Location[];
-        }
-
-        // Fallback to table select
         let builder = supabase
           .from('locations')
           .select('*')
@@ -174,17 +179,20 @@ export const locationService = {
           builder = builder.ilike('name', `%${query}%`);
         }
 
-        const { data: tableData } = await builder.limit(limit);
-        if (tableData) return tableData as Location[];
+        const { data: tableData, error } = await builder.limit(limit);
+        if (!error && tableData && tableData.length > 0) {
+          return tableData as Location[];
+        }
       } catch {
-        // Fall back to seed dataset
+        // Fall back to local dataset
       }
     }
 
     // Local / offline / fallback search
     const cleanQuery = query.trim().toLowerCase();
+    const source = getMergedLocalLocations();
 
-    return SEED_LOCATIONS.filter((loc) => {
+    return source.filter((loc) => {
       if (!loc.is_active) return false;
       if (type && loc.type !== type) return false;
       if (!cleanQuery) return true;
@@ -206,7 +214,135 @@ export const locationService = {
    * Retrieves all active locations.
    */
   async getAll(): Promise<Location[]> {
-    return this.search({ limit: 50 });
+    return this.search({ limit: 100 });
+  },
+
+  /**
+   * Retrieves all locations (including inactive) for administrative management.
+   */
+  async listAll(): Promise<Location[]> {
+    const isLive = isSupabaseConfigured();
+    if (isLive) {
+      try {
+        const { data, error } = await supabase
+          .from('locations')
+          .select('*')
+          .order('name', { ascending: true });
+        if (!error && data && data.length > 0) {
+          return data as Location[];
+        }
+      } catch (err) {
+        console.warn('Live listAll locations error:', err);
+      }
+    }
+
+    return getMergedLocalLocations().sort((a, b) => a.name.localeCompare(b.name));
+  },
+
+  /**
+   * Creates a new location / waypoint.
+   */
+  async createLocation(input: CreateLocationInput): Promise<Location> {
+    const isLive = isSupabaseConfigured();
+
+    if (isLive) {
+      try {
+        const { data, error } = await supabase
+          .from('locations')
+          .insert({
+            name: input.name.trim(),
+            type: input.type,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            address: input.address?.trim() || null,
+            is_active: input.is_active ?? true,
+          })
+          .select('*')
+          .single();
+
+        if (!error && data) {
+          return data as Location;
+        }
+      } catch (err) {
+        console.warn('Live createLocation error, persisting locally:', err);
+      }
+    }
+
+    // Local mode / fallback
+    const newId = `loc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newLocation: Location = {
+      id: newId,
+      name: input.name.trim(),
+      type: input.type,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      address: input.address?.trim() || null,
+      is_active: input.is_active ?? true,
+    };
+
+    const custom = getLocalData<Location>(STORAGE_KEYS.LOCATIONS);
+    custom[newId] = newLocation;
+    saveLocalData(STORAGE_KEYS.LOCATIONS, custom);
+
+    return newLocation;
+  },
+
+  /**
+   * Updates an existing location.
+   */
+  async updateLocation(id: string, updates: UpdateLocationInput): Promise<Location> {
+    const isLive = isSupabaseConfigured();
+
+    if (isLive) {
+      try {
+        const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (updates.name !== undefined) payload.name = updates.name.trim();
+        if (updates.type !== undefined) payload.type = updates.type;
+        if (updates.latitude !== undefined) payload.latitude = updates.latitude;
+        if (updates.longitude !== undefined) payload.longitude = updates.longitude;
+        if (updates.address !== undefined) payload.address = updates.address?.trim() || null;
+        if (updates.is_active !== undefined) payload.is_active = updates.is_active;
+
+        const { data, error } = await supabase
+          .from('locations')
+          .update(payload)
+          .eq('id', id)
+          .select('*')
+          .single();
+
+        if (!error && data) {
+          return data as Location;
+        }
+      } catch (err) {
+        console.warn('Live updateLocation error, falling back to local:', err);
+      }
+    }
+
+    // Local / fallback mode
+    const custom = getLocalData<Location>(STORAGE_KEYS.LOCATIONS);
+    const existing = custom[id] || SEED_LOCATIONS.find((s) => s.id === id);
+    if (!existing) {
+      throw new Error(`Location with ID ${id} not found`);
+    }
+
+    const updated: Location = {
+      ...existing,
+      ...updates,
+      name: updates.name !== undefined ? updates.name.trim() : existing.name,
+      address: updates.address !== undefined ? updates.address?.trim() || null : existing.address,
+    };
+
+    custom[id] = updated;
+    saveLocalData(STORAGE_KEYS.LOCATIONS, custom);
+
+    return updated;
+  },
+
+  /**
+   * Toggles active status of a location.
+   */
+  async toggleActive(id: string, isActive: boolean): Promise<Location> {
+    return this.updateLocation(id, { is_active: isActive });
   },
 
   /**
@@ -216,22 +352,16 @@ export const locationService = {
     if (!id) return null;
 
     // 1. Fetch live active locations (or fallback seed locations)
-    const results = await this.search({ limit: 50 });
+    const results = await this.getAll();
 
     // Direct match on ID (e.g. database UUID or seed ID)
     const directMatch = results.find((loc) => loc.id === id);
     if (directMatch) return directMatch;
 
-    // 2. Check if id is a canonical seed key (e.g. 'loc_akurdi_station', 'loc_icem_campus')
-    const seed = SEED_LOCATIONS.find((s) => s.id === id);
-    if (seed) {
-      // Find the corresponding location in live results by name
-      const liveByName = results.find(
-        (l) => l.name.trim().toLowerCase() === seed.name.trim().toLowerCase()
-      );
-      if (liveByName) return liveByName;
-      return seed;
-    }
+    // 2. Check in merged local locations
+    const merged = getMergedLocalLocations();
+    const localMatch = merged.find((loc) => loc.id === id);
+    if (localMatch) return localMatch;
 
     // 3. Fallback: check if id matches a location name directly
     const byName = results.find(
@@ -239,8 +369,7 @@ export const locationService = {
     );
     if (byName) return byName;
 
-    // 4. Final fallback to seed locations
-    return SEED_LOCATIONS.find((loc) => loc.id === id) || null;
+    return null;
   },
 
   /**

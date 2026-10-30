@@ -130,3 +130,36 @@
 button, input, select, textarea, a {
   min-height: 44px;
 }
+
+/* Prevent iOS Safari auto-zoom on input focus by guaranteeing 16px minimum on mobile viewports */
+@media screen and (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Mobile & PWA Ergonomics */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Smooth mobile touch scrolling & bounce behavior */
+html {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Prevent double-tap zoom on active interactive controls */
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}

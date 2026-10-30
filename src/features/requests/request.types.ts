@@ -18,6 +18,7 @@ export interface JoinRequest {
   pickup_waypoint_id?: string | null;
   drop_waypoint_id?: string | null;
   seat_count: number;
+  offered_amount?: number;
   specific_area_note?: string | null;
   status: JoinRequestStatus;
   created_at: string;
@@ -54,6 +55,7 @@ export interface CreateJoinRequestInput {
   pickup_waypoint_id?: string | null;
   drop_waypoint_id?: string | null;
   seat_count: number;
+  offered_amount?: number;
   specific_area_note?: string | null;
 }
 

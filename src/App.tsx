@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Navigation, type NavTab } from '@/components/layout/Navigation';
+import { PwaInstallPrompt } from '@/components/pwa/PwaInstallPrompt';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/features/auth/AuthContext';
-import { AuthShell } from '@/features/auth/AuthShell';
+import { AuthShell, type AuthMode } from '@/features/auth/AuthShell';
 import { ProtectedRoute } from '@/features/auth/ProtectedRoute';
 import { ProfileView } from '@/features/profile/ProfileView';
 import { AdminPanel } from '@/features/admin/AdminPanel';
@@ -11,39 +12,71 @@ import { HomeDashboard } from '@/features/home/HomeDashboard';
 import { Button } from '@/components/ui/Button';
 import { OfferRideForm } from '@/features/rides/OfferRideForm';
 import { MyRidesView } from '@/features/rides/MyRidesView';
-import { FindRideView } from '@/features/matching/FindRideView';
+import { RideDetailModal } from '@/features/rides/RideDetailModal';
+import type { Ride } from '@/features/rides/ride.types';
 import { ArrowLeft, LogIn } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 
 const AppContent: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
   const { user, isAuthenticated } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [selectedCorridor, setSelectedCorridor] = useState<{
-    pickupLocationId: string;
-    dropLocationId: string;
-    timestamp?: number;
-  } | null>(null);
+  const [authInitialMode, setAuthInitialMode] = useState<AuthMode>('signin');
+  const [selectedRideForModal, setSelectedRideForModal] = useState<Ride | null>(null);
+
+  // Deep-link navigation from PWA App Shortcuts or Password Reset / Auth callback links
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab') as NavTab | null;
+      if (tabParam) {
+        if (tabParam === 'find') {
+          setCurrentTab('home');
+        } else if (['home', 'offer', 'rides', 'profile', 'admin'].includes(tabParam)) {
+          setCurrentTab(tabParam);
+        }
+      }
+
+      // Check if user landed on https://icem-connect.vercel.app/ from a password recovery link
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      if (
+        hash.includes('type=recovery') ||
+        search.includes('type=recovery') ||
+        hash.includes('recovery_token')
+      ) {
+        setAuthInitialMode('reset_password');
+        setShowAuthModal(true);
+      }
+    } catch {
+      // ignore
+    }
+
+    if (isSupabaseConfigured()) {
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setAuthInitialMode('reset_password');
+          setShowAuthModal(true);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, []);
 
   const renderTabContent = () => {
     switch (currentTab) {
+      case 'find':
       case 'home':
         return (
           <HomeDashboard
             userEmail={user?.email || null}
-            onFindRideClick={(corridor) => {
-              setSelectedCorridor(corridor || null);
-              setCurrentTab('find');
-            }}
             onOfferRideClick={() => setCurrentTab('offer')}
-          />
-        );
-
-      case 'find':
-        return (
-          <FindRideView
-            initialCorridor={selectedCorridor}
-            onOfferClick={() => setCurrentTab('offer')}
-            onViewRequestsClick={() => setCurrentTab('rides')}
+            onInspectRide={(ride) => setSelectedRideForModal(ride)}
             onRequestAuth={() => setShowAuthModal(true)}
           />
         );
@@ -105,18 +138,22 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground pb-20 md:pb-6">
+    <div className="min-h-screen flex flex-col bg-background text-foreground pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">
       <AppHeader />
       <Navigation currentTab={currentTab} onTabChange={setCurrentTab} />
+      <PwaInstallPrompt />
 
       {!isAuthenticated && currentTab === 'home' && (
-        <div className="border-b border-border bg-[#003C84]/5 px-4 py-2 text-center text-xs text-primary">
-          <span>Are you an ICEM student? </span>
+        <div className="border-b border-border bg-[#003C84]/5 px-3 py-1.5 text-center text-xs text-primary flex flex-wrap items-center justify-center gap-1.5">
+          <span>Are you an ICEM student?</span>
           <button
-            onClick={() => setShowAuthModal(true)}
-            className="font-semibold underline hover:text-[#00A2A5] inline-flex items-center gap-1 ml-1"
+            onClick={() => {
+              setAuthInitialMode('signin');
+              setShowAuthModal(true);
+            }}
+            className="font-semibold underline hover:text-[#00A2A5] inline-flex items-center gap-1"
           >
-            <LogIn className="h-3 w-3" /> Sign in or Register with @indiraicem.ac.in
+            <LogIn className="h-3 w-3" /> Sign in or Register
           </button>
         </div>
       )}
@@ -134,12 +171,25 @@ const AppContent: React.FC = () => {
                 <ArrowLeft className="h-3.5 w-3.5" /> Back to Dashboard
               </Button>
             </div>
-            <AuthShell onSuccess={() => setShowAuthModal(false)} />
+            <AuthShell
+              initialMode={authInitialMode}
+              onSuccess={() => setShowAuthModal(false)}
+            />
           </div>
         ) : (
           renderTabContent()
         )}
       </main>
+
+      {/* Ride Detail Inspection & Seat Request Modal */}
+      {selectedRideForModal && (
+        <RideDetailModal
+          ride={selectedRideForModal}
+          isOpen={true}
+          onClose={() => setSelectedRideForModal(null)}
+          onRideUpdated={(updated) => setSelectedRideForModal(updated)}
+        />
+      )}
     </div>
   );
 };

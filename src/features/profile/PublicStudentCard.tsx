@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { User, ShieldCheck, Star } from 'lucide-react';
 
-interface PublicStudentCardProps {
+export interface PublicStudentCardProps {
   student: PublicStudentProfile;
   roleBadgeText?: string;
 }

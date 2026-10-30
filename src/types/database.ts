@@ -16,6 +16,8 @@ export type JoinRequestStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED
 export type ParticipantStatus = 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
 export type SessionStatus = 'ACTIVE' | 'ENDED';
 export type ReportStatus = 'PENDING' | 'UNDER_REVIEW' | 'RESOLVED' | 'DISMISSED';
+export type PaymentStatus = 'PENDING' | 'PAID_PENDING_CONFIRMATION' | 'CONFIRMED' | 'WAIVED' | 'DISPUTED';
+export type PaymentMethod = 'UPI' | 'CASH';
 
 export interface Database {
   public: {
@@ -50,6 +52,7 @@ export interface Database {
           department: string | null;
           year: number | null;
           profile_image_url: string | null;
+          upi_id: string | null;
           status: StudentStatus;
           rating_average: number;
           rating_count: number;
@@ -64,6 +67,7 @@ export interface Database {
           department?: string | null;
           year?: number | null;
           profile_image_url?: string | null;
+          upi_id?: string | null;
           status?: StudentStatus;
           rating_average?: number;
           rating_count?: number;
@@ -78,6 +82,7 @@ export interface Database {
           department?: string | null;
           year?: number | null;
           profile_image_url?: string | null;
+          upi_id?: string | null;
           status?: StudentStatus;
           rating_average?: number;
           rating_count?: number;
@@ -259,6 +264,7 @@ export interface Database {
           pickup_waypoint_id: string | null;
           drop_waypoint_id: string | null;
           seat_count: number;
+          offered_amount: number;
           specific_area_note: string | null;
           status: JoinRequestStatus;
           created_at: string;
@@ -271,6 +277,7 @@ export interface Database {
           pickup_waypoint_id?: string | null;
           drop_waypoint_id?: string | null;
           seat_count?: number;
+          offered_amount?: number;
           specific_area_note?: string | null;
           status?: JoinRequestStatus;
           created_at?: string;
@@ -283,6 +290,7 @@ export interface Database {
           pickup_waypoint_id?: string | null;
           drop_waypoint_id?: string | null;
           seat_count?: number;
+          offered_amount?: number;
           specific_area_note?: string | null;
           status?: JoinRequestStatus;
           created_at?: string;
@@ -485,6 +493,81 @@ export interface Database {
         };
         Relationships: [];
       };
+      user_blocks: {
+        Row: {
+          id: string;
+          blocker_id: string;
+          blocked_id: string;
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          blocker_id: string;
+          blocked_id: string;
+          reason?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          blocker_id?: string;
+          blocked_id?: string;
+          reason?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      ride_payments: {
+        Row: {
+          id: string;
+          ride_id: string;
+          request_id: string | null;
+          payer_id: string;
+          payee_id: string;
+          amount: number;
+          method: PaymentMethod;
+          status: PaymentStatus;
+          upi_intent_uri: string | null;
+          payer_paid_at: string | null;
+          host_confirmed_at: string | null;
+          dispute_reason: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          ride_id: string;
+          request_id?: string | null;
+          payer_id: string;
+          payee_id: string;
+          amount?: number;
+          method?: PaymentMethod;
+          status?: PaymentStatus;
+          upi_intent_uri?: string | null;
+          payer_paid_at?: string | null;
+          host_confirmed_at?: string | null;
+          dispute_reason?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          ride_id?: string;
+          request_id?: string | null;
+          payer_id?: string;
+          payee_id?: string;
+          amount?: number;
+          method?: PaymentMethod;
+          status?: PaymentStatus;
+          upi_intent_uri?: string | null;
+          payer_paid_at?: string | null;
+          host_confirmed_at?: string | null;
+          dispute_reason?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       public_students: {
@@ -547,6 +630,8 @@ export interface Database {
       participant_status: ParticipantStatus;
       session_status: SessionStatus;
       report_status: ReportStatus;
+      payment_status: PaymentStatus;
+      payment_method: PaymentMethod;
     };
     CompositeTypes: {
       [_ in never]: never;

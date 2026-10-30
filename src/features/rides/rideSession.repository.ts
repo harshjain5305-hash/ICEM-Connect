@@ -3,13 +3,10 @@ import { rideRepository } from '@/features/rides/ride.repository';
 import { requestRepository } from '@/features/requests/request.repository';
 import { authService } from '@/features/auth/auth.service';
 import type { RideSession } from '@/features/realtime/realtime.types';
+import { isValidUuid } from '@/lib/utils';
+import { STORAGE_KEYS } from '@/lib/localStorage';
 
-const LOCAL_STORAGE_SESSIONS_KEY = 'icem_ride_sessions_v1';
-
-function isValidUuid(id?: string | null): boolean {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-}
+const LOCAL_STORAGE_SESSIONS_KEY = STORAGE_KEYS.SESSIONS;
 
 function getLocalSessions(): Record<string, RideSession> {
   try {

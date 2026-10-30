@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { rideService, RideServiceError } from './ride.service';
+import { rideRepository } from './ride.repository';
 
 describe('Ride Service & Lifecycle Enforcement (Phase 3)', () => {
   const hostId = 'student_host_101';
@@ -204,7 +205,7 @@ describe('Ride Service & Lifecycle Enforcement (Phase 3)', () => {
       expect(hostRides.every((r) => r.host_id === hostId)).toBe(true);
     });
 
-    it('immediately hides dismissed rides from host list while retaining in storage', async () => {
+    it('permanently deletes ride from database, host UI, and public listings immediately', async () => {
       const ride1 = await rideService.createRide(hostId, validRidePayload);
       const ride2 = await rideService.createRide(hostId, {
         ...validRidePayload,
@@ -214,7 +215,7 @@ describe('Ride Service & Lifecycle Enforcement (Phase 3)', () => {
       let hostRides = await rideService.listHostRides(hostId);
       expect(hostRides.length).toBe(2);
 
-      // Host dismisses ride1 from UI
+      // Host deletes ride1 from UI
       await rideService.dismissRide(hostId, ride1.id);
 
       // Disappears from UI list immediately
@@ -222,9 +223,13 @@ describe('Ride Service & Lifecycle Enforcement (Phase 3)', () => {
       expect(hostRides.length).toBe(1);
       expect(hostRides[0].id).toBe(ride2.id);
 
-      // Still exists in database / storage with deleted_at set (retained for 2-day grace window)
-      const storedRide = await rideService.getRide(ride1.id);
-      expect(storedRide.deleted_at).toBeDefined();
+      // Permanently deleted from database / storage
+      await expect(rideService.getRide(ride1.id)).rejects.toThrow('was not found');
+      expect(await rideRepository.getRideById(ride1.id)).toBeNull();
+
+      // Disappears from published listings (Home and Find Ride)
+      const published = await rideService.listPublishedRides();
+      expect(published.find((r) => r.id === ride1.id)).toBeUndefined();
     });
 
     it('clears inactive rides for host', async () => {
@@ -245,9 +250,8 @@ describe('Ride Service & Lifecycle Enforcement (Phase 3)', () => {
 
     it('auto-purges dismissed rides from database/storage after 2 days (48 hours)', async () => {
       const ride = await rideService.createRide(hostId, validRidePayload);
-      await rideService.dismissRide(hostId, ride.id);
 
-      // Simulate 3 days passing in storage (older than 2 days)
+      // Simulate a legacy soft-deleted ride in storage from previous version
       const storageKey = 'icem_connect_rides_db_v1';
       const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
       expect(stored[ride.id]).toBeDefined();

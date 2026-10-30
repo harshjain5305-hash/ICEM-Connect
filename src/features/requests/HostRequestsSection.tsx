@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import type { Ride } from '@/features/rides/ride.types';
 import type { JoinRequest, RideParticipant, PublicStudentInfo } from './request.types';
 import { requestService } from './request.service';
@@ -7,6 +8,8 @@ import { ratingService } from '@/features/ratings/rating.service';
 import { RatingModal } from '@/features/ratings/RatingModal';
 import { ReportModal } from '@/features/moderation/ReportModal';
 import { BlockUserModal } from '@/features/moderation/BlockUserModal';
+import { paymentService } from '@/features/payments/payment.service';
+import type { RidePayment } from '@/features/payments/payment.types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import {
@@ -19,6 +22,8 @@ import {
   ShieldCheck,
   ShieldAlert,
   Ban,
+  IndianRupee,
+  CheckCircle2,
 } from 'lucide-react';
 
 export interface HostRequestsSectionProps {
@@ -33,36 +38,119 @@ export const HostRequestsSection: React.FC<HostRequestsSectionProps> = ({
   const { user } = useAuth();
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [participants, setParticipants] = useState<RideParticipant[]>([]);
+  const [payments, setPayments] = useState<RidePayment[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
   const [ratingParticipant, setRatingParticipant] = useState<PublicStudentInfo | null>(null);
   const [reportParticipant, setReportParticipant] = useState<PublicStudentInfo | null>(null);
   const [blockParticipant, setBlockParticipant] = useState<PublicStudentInfo | null>(null);
   const [hasRatedMap, setHasRatedMap] = useState<Record<string, boolean>>({});
 
   const isHost = Boolean(user && user.id === ride.host_id);
+  const isFetchingRef = React.useRef(false);
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
+  const loadData = useCallback(async (silent = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    if (!silent) {
+      setIsLoading(true);
+    }
     setActionError(null);
     try {
-      const [reqs, parts] = await Promise.all([
+      const [reqs, parts, payList] = await Promise.all([
         requestService.listRequestsForRide(ride.id),
         requestService.listParticipants(ride.id),
+        paymentService.listPaymentsByRide(ride.id).catch(() => []),
       ]);
       setRequests(reqs);
       setParticipants(parts);
+      setPayments(payList);
     } catch (err: unknown) {
       console.error('Failed to load ride requests:', err);
     } finally {
-      setIsLoading(false);
+      isFetchingRef.current = false;
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, [ride.id]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadData(false);
+
+    // 1. Supabase Realtime changes for this ride
+    let channel: any = null;
+    if (isSupabaseConfigured()) {
+      try {
+        channel = supabase
+          .channel(`public:requests_${ride.id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'ride_join_requests',
+              filter: `ride_id=eq.${ride.id}`,
+            },
+            () => {
+              loadData(true);
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'ride_participants',
+              filter: `ride_id=eq.${ride.id}`,
+            },
+            () => {
+              loadData(true);
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'ride_payments',
+              filter: `ride_id=eq.${ride.id}`,
+            },
+            () => {
+              loadData(true);
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn('Realtime subscription error in HostRequestsSection:', err);
+      }
+    }
+
+    // 2. Custom window events
+    const handleUpdate = () => {
+      loadData(true);
+    };
+    window.addEventListener('icem:join_requests_updated', handleUpdate);
+    window.addEventListener('icem:payments_updated', handleUpdate);
+
+    // 3. Fallback poll when open and tab is visible (15s)
+    const pollTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadData(true);
+      }
+    }, 15000);
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+      window.removeEventListener('icem:join_requests_updated', handleUpdate);
+      window.removeEventListener('icem:payments_updated', handleUpdate);
+      clearInterval(pollTimer);
+    };
+  }, [loadData, ride.id]);
 
   useEffect(() => {
     if (!user || ride.status !== 'COMPLETED') return;
@@ -107,11 +195,45 @@ export const HostRequestsSection: React.FC<HostRequestsSectionProps> = ({
     }
   };
 
+  const handleConfirmPayment = async (paymentId: string) => {
+    if (!user) return;
+    setProcessingPaymentId(paymentId);
+    setActionError(null);
+    try {
+      await paymentService.confirmPayment(user.id, paymentId);
+      await loadData(true);
+    } catch (err: unknown) {
+      setActionError((err as Error).message || 'Failed to confirm payment');
+    } finally {
+      setProcessingPaymentId(null);
+    }
+  };
+
+  const handleDisputePayment = async (paymentId: string) => {
+    if (!user) return;
+    const reason = window.prompt(
+      'Please state why this contribution was not received (e.g. incorrect reference, not shown in UPI):',
+      'Payment not received in UPI'
+    );
+    if (!reason) return;
+    setProcessingPaymentId(paymentId);
+    setActionError(null);
+    try {
+      await paymentService.disputePayment(user.id, paymentId, reason);
+      await loadData(true);
+    } catch (err: unknown) {
+      setActionError((err as Error).message || 'Failed to report payment non-receipt');
+    } finally {
+      setProcessingPaymentId(null);
+    }
+  };
+
   if (!isHost) {
     return null;
   }
 
   const pendingRequests = requests.filter((r) => r.status === 'PENDING');
+  const pendingConfirmations = payments.filter((p) => p.status === 'PAID_PENDING_CONFIRMATION');
 
   return (
     <div className="space-y-4 pt-2 border-t border-border/80">
@@ -137,6 +259,57 @@ export const HostRequestsSection: React.FC<HostRequestsSectionProps> = ({
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive flex items-center gap-2">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{actionError}</span>
+        </div>
+      )}
+
+      {/* PENDING FUEL CONTRIBUTION CONFIRMATION ALERTS */}
+      {pendingConfirmations.length > 0 && (
+        <div className="space-y-2">
+          {pendingConfirmations.map((pay) => (
+            <div
+              key={pay.id}
+              className="rounded-xl border border-emerald-500/40 bg-linear-to-r from-emerald-500/15 via-emerald-500/10 to-transparent p-3.5 space-y-2.5 shadow-xs"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold">
+                    <IndianRupee className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-foreground text-xs block">
+                      Confirm Fuel Contribution
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {pay.payer?.name || 'Passenger'} reported sending ₹{pay.amount} via {pay.method}
+                    </span>
+                  </div>
+                </div>
+                <Badge variant="warning" className="text-[10px]">
+                  Action Required
+                </Badge>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button
+                  size="sm"
+                  disabled={processingPaymentId === pay.id}
+                  onClick={() => handleConfirmPayment(pay.id)}
+                  className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-semibold"
+                >
+                  <Check className="h-3.5 w-3.5" /> Confirm Received ₹{pay.amount}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={processingPaymentId === pay.id}
+                  onClick={() => handleDisputePayment(pay.id)}
+                  className="h-8 text-xs text-destructive hover:bg-destructive/10 border-destructive/30"
+                >
+                  Not Received
+                </Button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -171,6 +344,41 @@ export const HostRequestsSection: React.FC<HostRequestsSectionProps> = ({
                   <Badge variant="success" className="text-[10px]">
                     {p.seat_count} Seat{p.seat_count > 1 ? 's' : ''} Confirmed
                   </Badge>
+
+                  {/* Payment Status Badge for this Participant */}
+                  {(() => {
+                    const pay = payments.find((item) => item.payer_id === p.student_id);
+                    if (!pay) return null;
+                    if (pay.status === 'CONFIRMED') {
+                      return (
+                        <Badge variant="success" className="text-[10px] gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> ₹{pay.amount} Received
+                        </Badge>
+                      );
+                    }
+                    if (pay.status === 'PAID_PENDING_CONFIRMATION') {
+                      return (
+                        <Badge variant="warning" className="text-[10px]">
+                          ₹{pay.amount} Verify
+                        </Badge>
+                      );
+                    }
+                    if (pay.status === 'PENDING') {
+                      return (
+                        <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                          ₹{pay.amount} Due
+                        </Badge>
+                      );
+                    }
+                    if (pay.status === 'DISPUTED') {
+                      return (
+                        <Badge variant="destructive" className="text-[10px]">
+                          ₹{pay.amount} Disputed
+                        </Badge>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   {ride.status === 'COMPLETED' && p.student && (
                     hasRatedMap[p.student_id] ? (
@@ -265,6 +473,17 @@ export const HostRequestsSection: React.FC<HostRequestsSectionProps> = ({
                     <span className="font-semibold text-foreground">
                       {req.seat_count} {req.seat_count === 1 ? 'Seat' : 'Seats'}
                     </span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Fuel Share:</span>
+                    {Number(req.offered_amount) > 0 ? (
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                        ₹{Number(req.offered_amount)} offered
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground italic">₹0 (Free / No share)</span>
+                    )}
                   </div>
 
                   <div className="flex justify-between">

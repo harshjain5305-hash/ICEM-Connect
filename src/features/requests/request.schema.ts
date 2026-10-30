@@ -9,6 +9,12 @@ export const createJoinRequestSchema = z.object({
     .int('Seats must be a whole number')
     .min(1, 'At least 1 seat must be requested')
     .max(4, 'A maximum of 4 seats can be requested'),
+  offered_amount: z
+    .number()
+    .min(0, 'Offered amount cannot be negative')
+    .max(2000, 'Offered amount cannot exceed ₹2000')
+    .default(0)
+    .optional(),
   specific_area_note: z
     .string()
     .max(140, 'Pickup note must be 140 characters or fewer')

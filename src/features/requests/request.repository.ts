@@ -2,6 +2,8 @@ import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import { rideRepository } from '@/features/rides/ride.repository';
 import { authService } from '@/features/auth/auth.service';
 import { notificationService } from '@/features/notifications/notification.service';
+import { realtimeService } from '@/features/realtime/realtime.service';
+import { paymentRepository } from '@/features/payments/payment.repository';
 import type {
   JoinRequest,
   RideParticipant,
@@ -11,49 +13,48 @@ import type {
   PublicStudentInfo,
 } from './request.types';
 
-const LOCAL_STORAGE_REQUESTS_KEY = 'icem_join_requests_v1';
-const LOCAL_STORAGE_PARTICIPANTS_KEY = 'icem_participants_v1';
+import { isValidUuid } from '@/lib/utils';
+import { getLocalData, saveLocalData, STORAGE_KEYS } from '@/lib/localStorage';
 
-function getLocalData<T>(key: string): Record<string, T> {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
+const LOCAL_STORAGE_REQUESTS_KEY = STORAGE_KEYS.REQUESTS;
+const LOCAL_STORAGE_PARTICIPANTS_KEY = STORAGE_KEYS.PARTICIPANTS;
+
+function notifyRequestsChanged(rideId: string, eventType: string, reqId?: string): void {
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('icem:join_requests_updated', {
+          detail: { rideId, eventType, reqId },
+        })
+      );
+    } catch {
+      // ignore in non-browser environments
+    }
   }
-}
-
-function saveLocalData<T>(key: string, data: Record<string, T>): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (err) {
-    console.error(`Failed to save data to localStorage key ${key}:`, err);
-  }
-}
-
-function isValidUuid(id?: string | null): boolean {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 }
 
 async function getPublicStudentInfo(studentId: string): Promise<PublicStudentInfo> {
-  const profile = await authService.getProfile(studentId);
-  if (profile) {
-    return {
-      id: profile.id,
-      name: profile.name,
-      department: profile.department,
-      year: profile.year,
-      profile_image_url: profile.profile_image_url,
-      rating: profile.rating_average,
-      is_verified: profile.status === 'ACTIVE',
-    };
+  try {
+    const profile = await authService.getProfile(studentId);
+    if (profile) {
+      return {
+        id: profile.id,
+        name: profile.name || 'ICEM Student',
+        department: profile.department || 'Engineering',
+        year: profile.year || 1,
+        profile_image_url: profile.profile_image_url || null,
+        rating: profile.rating_average ?? 5.0,
+        is_verified: profile.status === 'ACTIVE',
+      };
+    }
+  } catch (err) {
+    console.warn('getPublicStudentInfo lookup warning:', err);
   }
   return {
     id: studentId,
     name: 'ICEM Student',
     department: 'Engineering',
-    year: 3,
+    year: 1,
     rating: 5.0,
     is_verified: true,
   };
@@ -66,17 +67,40 @@ export const requestRepository = {
   ): Promise<JoinRequest> {
     const isLive = isSupabaseConfigured();
     let liveRequest: JoinRequest | null = null;
+    const offeredAmount = Number(input.offered_amount) || 0;
 
     if (isLive && isValidUuid(studentId) && isValidUuid(input.ride_id)) {
       try {
-        const { data, error } = await supabase.rpc('create_ride_join_request', {
+        // Try calling stored procedure with p_offered_amount first
+        let rpcRes = await supabase.rpc('create_ride_join_request', {
           p_student_id: studentId,
           p_ride_id: input.ride_id,
           p_pickup_waypoint_id: isValidUuid(input.pickup_waypoint_id) ? input.pickup_waypoint_id : null,
           p_drop_waypoint_id: isValidUuid(input.drop_waypoint_id) ? input.drop_waypoint_id : null,
           p_seat_count: input.seat_count,
           p_specific_area_note: input.specific_area_note || null,
+          p_offered_amount: offeredAmount,
         });
+
+        // If remote database still has 6-parameter signature, fallback cleanly
+        if (
+          rpcRes.error &&
+          (rpcRes.error.message.includes('p_offered_amount') ||
+            rpcRes.error.message.includes('schema cache') ||
+            rpcRes.error.message.includes('function') ||
+            rpcRes.error.code === 'PGRST202')
+        ) {
+          rpcRes = await supabase.rpc('create_ride_join_request', {
+            p_student_id: studentId,
+            p_ride_id: input.ride_id,
+            p_pickup_waypoint_id: isValidUuid(input.pickup_waypoint_id) ? input.pickup_waypoint_id : null,
+            p_drop_waypoint_id: isValidUuid(input.drop_waypoint_id) ? input.drop_waypoint_id : null,
+            p_seat_count: input.seat_count,
+            p_specific_area_note: input.specific_area_note || null,
+          });
+        }
+
+        const { data, error } = rpcRes;
 
         if (error) {
           console.warn('Supabase create_ride_join_request returned error:', error.message, error.details);
@@ -90,8 +114,23 @@ export const requestRepository = {
           }
         } else if (data && (data as { request_id?: string }).request_id) {
           const reqId = (data as { request_id: string }).request_id;
+
+          // Always guarantee offered_amount is updated directly in Supabase table
+          if (offeredAmount > 0) {
+            try {
+              await supabase
+                .from('ride_join_requests')
+                .update({ offered_amount: offeredAmount })
+                .eq('id', reqId);
+            } catch (updErr) {
+              console.warn('Failed to update offered_amount in Supabase:', updErr);
+            }
+          }
+
           liveRequest = await this.getRequestById(reqId);
-          if (!liveRequest) {
+          if (liveRequest) {
+            liveRequest.offered_amount = offeredAmount;
+          } else {
             const studentInfo = await getPublicStudentInfo(studentId);
             const ride = await rideRepository.getRideById(input.ride_id);
             liveRequest = {
@@ -101,6 +140,7 @@ export const requestRepository = {
               pickup_waypoint_id: input.pickup_waypoint_id || null,
               drop_waypoint_id: input.drop_waypoint_id || null,
               seat_count: input.seat_count,
+              offered_amount: offeredAmount,
               specific_area_note: input.specific_area_note || null,
               status: 'PENDING',
               created_at: new Date().toISOString(),
@@ -125,10 +165,47 @@ export const requestRepository = {
     }
 
     if (liveRequest) {
+      liveRequest.offered_amount = offeredAmount;
+
       // Mirror in local store for instant reactive availability
       const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
       requests[liveRequest.id] = liveRequest;
       saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+
+      // Mirror notification to host in local store & cross-tab bus
+      const ride = liveRequest.ride || (await rideRepository.getRideById(input.ride_id));
+      if (ride) {
+        const shareNote = offeredAmount > 0 ? ` (Fuel share: ₹${offeredAmount} offered)` : '';
+        notificationService.notify({
+          user_id: ride.host_id,
+          title: 'New Join Request',
+          message: `${liveRequest.student?.name || 'A student'} requested ${input.seat_count} seat(s)${shareNote} for your ride.`,
+          type: 'REQUEST_RECEIVED',
+          data: {
+            request_id: liveRequest.id,
+            ride_id: ride.id,
+            seat_count: input.seat_count,
+            offered_amount: offeredAmount,
+            specific_area_note: input.specific_area_note,
+          },
+        }).catch(() => {});
+      }
+
+      // Broadcast realtime event & dispatch local reactive change
+      realtimeService.broadcastRideEvent(input.ride_id, {
+        type: 'ride:join_request_created',
+        ride_id: input.ride_id,
+        payload: {
+          request_id: liveRequest.id,
+          requester_id: studentId,
+          requester_name: liveRequest.student?.name || 'ICEM Student',
+          seat_count: input.seat_count,
+          offered_amount: offeredAmount,
+        },
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
+
+      notifyRequestsChanged(input.ride_id, 'created', liveRequest.id);
       return liveRequest;
     }
 
@@ -179,6 +256,7 @@ export const requestRepository = {
       pickup_waypoint_id: input.pickup_waypoint_id || null,
       drop_waypoint_id: input.drop_waypoint_id || null,
       seat_count: input.seat_count,
+      offered_amount: offeredAmount,
       specific_area_note: input.specific_area_note?.trim() || null,
       status: 'PENDING',
       created_at: now,
@@ -191,18 +269,35 @@ export const requestRepository = {
     saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
 
     // Notify host
+    const shareNote = offeredAmount > 0 ? ` (Fuel share: ₹${offeredAmount} offered)` : '';
     await notificationService.notify({
       user_id: ride.host_id,
       title: 'New Join Request',
-      message: `${studentInfo.name} requested ${input.seat_count} seat(s) for your ride.`,
+      message: `${studentInfo.name} requested ${input.seat_count} seat(s)${shareNote} for your ride.`,
       type: 'REQUEST_RECEIVED',
       data: {
         request_id: id,
         ride_id: ride.id,
         seat_count: input.seat_count,
+        offered_amount: offeredAmount,
         specific_area_note: input.specific_area_note,
       },
     });
+
+    realtimeService.broadcastRideEvent(input.ride_id, {
+      type: 'ride:join_request_created',
+      ride_id: input.ride_id,
+      payload: {
+        request_id: id,
+        requester_id: studentId,
+        requester_name: studentInfo.name || 'ICEM Student',
+        seat_count: input.seat_count,
+        offered_amount: offeredAmount,
+      },
+      timestamp: now,
+    }).catch(() => {});
+
+    notifyRequestsChanged(input.ride_id, 'created', id);
 
     return newRequest;
   },
@@ -220,6 +315,11 @@ export const requestRepository = {
 
         if (!error && data) {
           const req = data as unknown as JoinRequest;
+          const localRequests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
+          const localMatch = localRequests[req.id];
+          const dbAmount = Number(req.offered_amount) || 0;
+          const localAmount = Number(localMatch?.offered_amount) || 0;
+          req.offered_amount = dbAmount > 0 ? dbAmount : localAmount;
           req.student = await getPublicStudentInfo(req.student_id);
           req.ride = (await rideRepository.getRideById(req.ride_id)) || undefined;
           return req;
@@ -232,6 +332,7 @@ export const requestRepository = {
     const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
     const req = requests[requestId] || null;
     if (req) {
+      req.offered_amount = Number(req.offered_amount) || 0;
       if (!req.student) {
         req.student = await getPublicStudentInfo(req.student_id);
       }
@@ -245,6 +346,7 @@ export const requestRepository = {
   async listRequestsByRide(rideId: string): Promise<JoinRequest[]> {
     const isLive = isSupabaseConfigured();
     const liveResults: JoinRequest[] = [];
+    const localRequests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
 
     if (isLive && isValidUuid(rideId)) {
       try {
@@ -254,10 +356,26 @@ export const requestRepository = {
           .eq('ride_id', rideId)
           .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           for (const item of data) {
             const req = item as unknown as JoinRequest;
-            req.student = await getPublicStudentInfo(req.student_id);
+            const localMatch = localRequests[req.id];
+            const dbAmount = Number(req.offered_amount) || 0;
+            const localAmount = Number(localMatch?.offered_amount) || 0;
+            req.offered_amount = dbAmount > 0 ? dbAmount : localAmount;
+
+            try {
+              req.student = await getPublicStudentInfo(req.student_id);
+            } catch {
+              req.student = {
+                id: req.student_id,
+                name: 'ICEM Student',
+                department: 'Engineering',
+                year: 1,
+                rating: 5.0,
+                is_verified: true,
+              };
+            }
             liveResults.push(req);
           }
         }
@@ -267,7 +385,6 @@ export const requestRepository = {
     }
 
     // Always merge with local storage requests
-    const localRequests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
     const localList = Object.values(localRequests).filter((r) => r.ride_id === rideId);
 
     const combinedMap = new Map<string, JoinRequest>();
@@ -279,7 +396,13 @@ export const requestRepository = {
         if (!r.student) {
           r.student = await getPublicStudentInfo(r.student_id);
         }
+        r.offered_amount = Number(r.offered_amount) || 0;
         combinedMap.set(r.id, r);
+      } else {
+        const live = combinedMap.get(r.id)!;
+        if ((!live.offered_amount || Number(live.offered_amount) === 0) && Number(r.offered_amount) > 0) {
+          live.offered_amount = Number(r.offered_amount);
+        }
       }
     }
 
@@ -291,9 +414,12 @@ export const requestRepository = {
   async listRequestsByStudent(studentId: string): Promise<JoinRequest[]> {
     const isLive = isSupabaseConfigured();
     const liveResults: JoinRequest[] = [];
+    const localRequests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
 
     // Trigger auto-purge of join requests soft-deleted > 2 days ago
     await this.purgeExpiredDismissedRequests();
+
+    const dismissedRequests = getLocalData<string>(STORAGE_KEYS.DISMISSED_REQUESTS);
 
     if (isLive && isValidUuid(studentId)) {
       try {
@@ -304,9 +430,15 @@ export const requestRepository = {
           .is('deleted_at', null)
           .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           for (const item of data) {
+            if (dismissedRequests[item.id]) continue;
             const req = item as unknown as JoinRequest;
+            const localMatch = localRequests[req.id];
+            const dbAmount = Number(req.offered_amount) || 0;
+            const localAmount = Number(localMatch?.offered_amount) || 0;
+            req.offered_amount = dbAmount > 0 ? dbAmount : localAmount;
+
             req.ride = (await rideRepository.getRideById(req.ride_id)) || undefined;
             liveResults.push(req);
           }
@@ -317,19 +449,31 @@ export const requestRepository = {
     }
 
     // Always merge with local storage requests (excluding dismissed ones)
-    const localRequests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
-    const localList = Object.values(localRequests).filter((r) => r.student_id === studentId && !r.deleted_at);
+    const localList = Object.values(localRequests).filter((r) => {
+      if (r.student_id !== studentId) return false;
+      if (r.deleted_at) return false;
+      if (dismissedRequests[r.id]) return false;
+      return true;
+    });
 
     const combinedMap = new Map<string, JoinRequest>();
     for (const r of liveResults) {
-      combinedMap.set(r.id, r);
+      if (!dismissedRequests[r.id] && !r.deleted_at) {
+        combinedMap.set(r.id, r);
+      }
     }
     for (const r of localList) {
-      if (!combinedMap.has(r.id)) {
+      if (!combinedMap.has(r.id) && !dismissedRequests[r.id] && !r.deleted_at) {
         if (!r.ride) {
           r.ride = (await rideRepository.getRideById(r.ride_id)) || undefined;
         }
+        r.offered_amount = Number(r.offered_amount) || 0;
         combinedMap.set(r.id, r);
+      } else if (combinedMap.has(r.id)) {
+        const live = combinedMap.get(r.id)!;
+        if ((!live.offered_amount || Number(live.offered_amount) === 0) && Number(r.offered_amount) > 0) {
+          live.offered_amount = Number(r.offered_amount);
+        }
       }
     }
 
@@ -342,25 +486,49 @@ export const requestRepository = {
    * Soft-deletes / dismisses a join request from the passenger's UI.
    * Sets deleted_at = now(). The booking is immediately hidden from the UI
    * and auto-deleted from the database after 2 days (48 hours).
+   * Live ACTIVE rides and PENDING host approval requests cannot be deleted.
    */
-  async dismissRequest(studentId: string, requestId: string): Promise<void> {
+  async dismissRequest(_studentId: string, requestId: string): Promise<void> {
     const nowIso = new Date().toISOString();
     const isLive = isSupabaseConfigured();
+
+    // Check restrictions: Live ride or pending host approval cannot be deleted
+    const req = await this.getRequestById(requestId);
+    if (req) {
+      if (req.status === 'PENDING') {
+        throw new Error('Cannot delete a request pending host approval. Please cancel the request first if you wish to withdraw.');
+      }
+      if (req.ride?.status === 'ACTIVE') {
+        throw new Error('Cannot delete an active live ride in progress.');
+      }
+    }
+
+    // Permanently record in dismissed set so it never reappears on refresh
+    const dismissedRequests = getLocalData<string>(STORAGE_KEYS.DISMISSED_REQUESTS);
+    dismissedRequests[requestId] = nowIso;
+    saveLocalData(STORAGE_KEYS.DISMISSED_REQUESTS, dismissedRequests);
 
     if (isLive && isValidUuid(requestId)) {
       try {
         await supabase
           .from('ride_join_requests')
           .update({ deleted_at: nowIso })
-          .eq('id', requestId)
-          .eq('student_id', studentId);
+          .eq('id', requestId);
       } catch (err) {
-        console.warn('Live dismissRequest error:', err);
+        console.warn('Live dismissRequest update error:', err);
+      }
+      try {
+        await supabase
+          .from('ride_join_requests')
+          .delete()
+          .eq('id', requestId);
+      } catch (err) {
+        console.warn('Live dismissRequest delete error:', err);
       }
     }
 
     const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
-    if (requests[requestId] && requests[requestId].student_id === studentId) {
+    if (requests[requestId]) {
       requests[requestId].deleted_at = nowIso;
       saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
     }
@@ -410,7 +578,7 @@ export const requestRepository = {
           .eq('ride_id', rideId)
           .in('status', ['CONFIRMED', 'COMPLETED']);
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           for (const item of data) {
             const p = item as unknown as RideParticipant;
             p.student = await getPublicStudentInfo(p.student_id);
@@ -487,6 +655,29 @@ export const requestRepository = {
             req.status = 'ACCEPTED';
             requests[requestId] = req;
             saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+
+            // Initialize fuel contribution payment if offered
+            const offeredAmt = Number(req.offered_amount) || 0;
+            if (offeredAmt > 0) {
+              paymentRepository.createOrGetPayment({
+                ride_id: req.ride_id,
+                request_id: requestId,
+                payer_id: req.student_id,
+                payee_id: hostId,
+                amount: offeredAmt,
+              }).catch(() => {});
+            }
+            notifyRequestsChanged(req.ride_id, 'accepted', requestId);
+            realtimeService.broadcastRideEvent(req.ride_id, {
+              type: 'ride:join_request_accepted',
+              ride_id: req.ride_id,
+              payload: {
+                request_id: requestId,
+                passenger_id: req.student_id,
+                available_seats: (data as AcceptRequestResult).available_seats ?? 0,
+              },
+              timestamp: new Date().toISOString(),
+            }).catch(() => {});
           }
           return data as unknown as AcceptRequestResult;
         } else if (error) {
@@ -561,6 +752,18 @@ export const requestRepository = {
     };
     saveLocalData(LOCAL_STORAGE_PARTICIPANTS_KEY, participants);
 
+    // Initialize fuel contribution payment if offered
+    const offeredAmt = Number(req.offered_amount) || 0;
+    if (offeredAmt > 0) {
+      paymentRepository.createOrGetPayment({
+        ride_id: ride.id,
+        request_id: requestId,
+        payer_id: req.student_id,
+        payee_id: hostId,
+        amount: offeredAmt,
+      }).catch(() => {});
+    }
+
     // Send notification to passenger
     await notificationService.notify({
       user_id: req.student_id,
@@ -573,6 +776,18 @@ export const requestRepository = {
         seat_count: req.seat_count,
       },
     });
+
+    notifyRequestsChanged(ride.id, 'accepted', requestId);
+    realtimeService.broadcastRideEvent(ride.id, {
+      type: 'ride:join_request_accepted',
+      ride_id: ride.id,
+      payload: {
+        request_id: requestId,
+        passenger_id: req.student_id,
+        available_seats: newAvailable,
+      },
+      timestamp: new Date().toISOString(),
+    }).catch(() => {});
 
     return {
       success: true,
@@ -605,6 +820,16 @@ export const requestRepository = {
             requests[requestId].status = 'REJECTED';
             requests[requestId].updated_at = new Date().toISOString();
             saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+            notifyRequestsChanged(requests[requestId].ride_id, 'rejected', requestId);
+            realtimeService.broadcastRideEvent(requests[requestId].ride_id, {
+              type: 'ride:join_request_rejected',
+              ride_id: requests[requestId].ride_id,
+              payload: {
+                request_id: requestId,
+                passenger_id: requests[requestId].student_id,
+              },
+              timestamp: new Date().toISOString(),
+            }).catch(() => {});
           }
           return { success: true, status: 'REJECTED' };
         } else if (error) {
@@ -648,6 +873,17 @@ export const requestRepository = {
       },
     });
 
+    notifyRequestsChanged(ride.id, 'rejected', requestId);
+    realtimeService.broadcastRideEvent(ride.id, {
+      type: 'ride:join_request_rejected',
+      ride_id: ride.id,
+      payload: {
+        request_id: requestId,
+        passenger_id: req.student_id,
+      },
+      timestamp: new Date().toISOString(),
+    }).catch(() => {});
+
     return { success: true, status: 'REJECTED' };
   },
 
@@ -667,6 +903,7 @@ export const requestRepository = {
             requests[requestId].status = 'CANCELLED';
             requests[requestId].updated_at = new Date().toISOString();
             saveLocalData(LOCAL_STORAGE_REQUESTS_KEY, requests);
+            notifyRequestsChanged(requests[requestId].ride_id, 'cancelled', requestId);
           }
           return data as unknown as CancelRequestResult;
         } else if (error) {
@@ -677,10 +914,16 @@ export const requestRepository = {
       }
     }
 
-    // Local mode
+    // Local mode / Fallback cancellation
     const requests = getLocalData<JoinRequest>(LOCAL_STORAGE_REQUESTS_KEY);
-    const req = requests[requestId];
+    let req: JoinRequest | null | undefined = requests[requestId];
     if (!req) {
+      req = await this.getRequestById(requestId);
+    }
+    if (!req) {
+      const dismissed = getLocalData<string>(STORAGE_KEYS.DISMISSED_REQUESTS);
+      dismissed[requestId] = new Date().toISOString();
+      saveLocalData(STORAGE_KEYS.DISMISSED_REQUESTS, dismissed);
       return { success: true, status: 'CANCELLED' };
     }
 
@@ -705,6 +948,7 @@ export const requestRepository = {
           type: 'REQUEST_CANCELLED',
           data: { request_id: requestId, ride_id: ride.id },
         });
+        notifyRequestsChanged(ride.id, 'cancelled', requestId);
       }
 
       return { success: true, status: 'CANCELLED' };
@@ -719,7 +963,7 @@ export const requestRepository = {
         throw new Error('Cannot cancel ride request on an active or completed ride');
       }
 
-      const newAvailable = ride.available_seats + req.seat_count;
+      const newAvailable = Math.min(ride.total_seats, Math.max(0, ride.available_seats + req.seat_count));
       await rideRepository.updateRide(ride.id, {
         available_seats: newAvailable,
         status: ride.status === 'CONFIRMED' ? 'PUBLISHED' : ride.status,
@@ -747,6 +991,7 @@ export const requestRepository = {
         type: 'REQUEST_CANCELLED',
         data: { request_id: requestId, ride_id: ride.id },
       });
+      notifyRequestsChanged(ride.id, 'cancelled', requestId);
 
       return {
         success: true,
@@ -754,6 +999,10 @@ export const requestRepository = {
         restored_seats: req.seat_count,
         available_seats: newAvailable,
       };
+    }
+
+    if (req.status === 'CANCELLED') {
+      return { success: true, status: 'CANCELLED' };
     }
 
     throw new Error(`Request cannot be cancelled in state ${req.status}`);

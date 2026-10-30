@@ -9,7 +9,7 @@ describe('recurringScheduleService', () => {
     localStorage.clear();
   });
 
-  it('creates a recurring schedule and auto-materializes rides for upcoming weekdays', async () => {
+  it('Option 1: creates a recurring schedule without flooding extra rides by default', async () => {
     const { schedule, materializedRides } = await recurringScheduleService.createSchedule(
       hostId,
       {
@@ -27,18 +27,39 @@ describe('recurringScheduleService', () => {
     expect(schedule.is_active).toBe(true);
     expect(schedule.days_of_week).toEqual([1, 2, 3, 4, 5]);
 
-    // Materialized rides should be created for upcoming weekdays
-    expect(materializedRides.length).toBeGreaterThan(0);
-    expect(materializedRides.every((r) => r.departure_time === '08:30')).toBe(true);
-    expect(materializedRides.every((r) => r.status === 'PUBLISHED')).toBe(true);
+    // Option 1 guarantee: 0 extra rides flooded on initial schedule creation!
+    expect(materializedRides.length).toBe(0);
 
-    // Verify rides in repository
     const hostRides = await rideRepository.listRidesByHost(hostId);
-    expect(hostRides.length).toBe(materializedRides.length);
+    expect(hostRides.length).toBe(0);
   });
 
-  it('does not duplicate rides when auto-materialize is invoked repeatedly', async () => {
-    const { schedule, materializedRides: firstPass } = await recurringScheduleService.createSchedule(
+  it('allows manual 1-click publishing of the single next routine ride', async () => {
+    const { schedule } = await recurringScheduleService.createSchedule(
+      hostId,
+      {
+        origin_location_id: 'loc_akurdi_station',
+        destination_location_id: 'loc_icem_campus',
+        departure_time: '08:30',
+        days_of_week: [1, 2, 3, 4, 5],
+        total_seats: 1,
+        vehicle_type: 'BIKE',
+      }
+    );
+
+    // Host taps "Publish Next Ride"
+    const nextRide = await recurringScheduleService.publishNextRide(schedule.id);
+    expect(nextRide).not.toBeNull();
+    expect(nextRide?.status).toBe('PUBLISHED');
+    expect(nextRide?.departure_time).toBe('08:30');
+
+    // Only 1 ride was created
+    const hostRides = await rideRepository.listRidesByHost(hostId);
+    expect(hostRides.length).toBe(1);
+  });
+
+  it('supports explicit auto-materialize on demand when daysAhead is requested', async () => {
+    const { schedule, materializedRides } = await recurringScheduleService.createSchedule(
       hostId,
       {
         origin_location_id: 'loc_talegaon_station',
@@ -47,15 +68,14 @@ describe('recurringScheduleService', () => {
         days_of_week: [1, 2, 3, 4, 5],
         total_seats: 2,
         vehicle_type: 'SCOOTER',
-      }
+      },
+      7 // Explicitly requested
     );
 
+    expect(materializedRides.length).toBeGreaterThan(0);
     const secondPass = await recurringScheduleService.autoMaterializeUpcomingRides(schedule, 7);
     // Should not create duplicates
     expect(secondPass.length).toBe(0);
-
-    const allRides = await rideRepository.listRidesByHost(hostId);
-    expect(allRides.length).toBe(firstPass.length);
   });
 
   it('pauses and resumes a specific date without creating a ride for the paused day', async () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, PlusCircle, Car, User, ShieldCheck } from 'lucide-react';
+import { Home, PlusCircle, Car, User, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/features/auth/useAuth';
 
@@ -15,7 +15,6 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange 
 
   const navItems: { id: NavTab; label: string; icon: React.ReactNode; isAction?: boolean }[] = [
     { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" /> },
-    { id: 'find', label: 'Find', icon: <Search className="h-5 w-5" /> },
     { id: 'offer', label: 'Offer', icon: <PlusCircle className="h-6 w-6" />, isAction: true },
     { id: 'rides', label: 'My Rides', icon: <Car className="h-5 w-5" /> },
     { id: 'profile', label: 'Profile', icon: <User className="h-5 w-5" /> },
@@ -29,13 +28,13 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange 
     });
   }
 
-  const gridColsClass = isAdmin ? 'grid-cols-6' : 'grid-cols-5';
+  const gridColsClass = isAdmin ? 'grid-cols-5' : 'grid-cols-4';
 
   return (
     <>
       {/* Mobile Bottom Navigation (Design.md §13) */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md md:hidden">
-        <div className={cn('grid h-16 items-center px-2', gridColsClass)}>
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)] md:hidden">
+        <div className={cn('grid h-16 items-center px-1.5', gridColsClass)}>
           {navItems.map((item) => {
             const isActive = currentTab === item.id;
             return (
@@ -43,7 +42,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange 
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-1 transition-colors min-h-[44px]',
+                  'flex flex-col items-center justify-center gap-1 transition-colors min-h-[48px] py-1 select-none active:opacity-75',
                   isActive
                     ? 'text-primary font-semibold'
                     : 'text-muted-foreground hover:text-foreground',
@@ -56,9 +55,11 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange 
                     {item.icon}
                   </div>
                 ) : (
-                  item.icon
+                  <div className={cn('relative flex items-center justify-center', isActive && 'scale-105 transition-transform')}>
+                    {item.icon}
+                  </div>
                 )}
-                <span className="text-[11px]">{item.label}</span>
+                <span className="text-[11px] leading-tight font-medium tracking-tight">{item.label}</span>
               </button>
             );
           })}

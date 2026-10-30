@@ -30,18 +30,21 @@ describe('App Shell & Design System (Phase 0)', () => {
     expect(screen.getByText(/Campus Verified/i)).toBeInTheDocument();
   });
 
-  it('renders navigation tabs for Home, Find, Offer, My Rides, and Profile', async () => {
+  it('renders navigation tabs for Home, Offer, My Rides, and Profile', async () => {
     await act(async () => {
       render(<App />);
     });
     const homeElements = screen.getAllByText('Home');
     expect(homeElements.length).toBeGreaterThan(0);
 
-    const findElements = screen.getAllByText('Find');
-    expect(findElements.length).toBeGreaterThan(0);
-
     const offerElements = screen.getAllByText('Offer');
     expect(offerElements.length).toBeGreaterThan(0);
+
+    const ridesElements = screen.getAllByText('My Rides');
+    expect(ridesElements.length).toBeGreaterThan(0);
+
+    const profileElements = screen.getAllByText('Profile');
+    expect(profileElements.length).toBeGreaterThan(0);
   });
 
   it('renders Popular Campus Commute Corridors and student commute features', async () => {
@@ -61,7 +64,7 @@ describe('App Shell & Design System (Phase 0)', () => {
     expect(campusBadge).toHaveClass('text-[#00A2A5]');
   });
 
-  it('navigates to Find tab and pre-fills corridor when clicking a popular corridor card', async () => {
+  it('pre-fills corridor and executes search when clicking a popular corridor card', async () => {
     await act(async () => {
       render(<App />);
     });
@@ -75,14 +78,8 @@ describe('App Shell & Design System (Phase 0)', () => {
       akurdiCard.click();
     });
 
-    // Should switch to Find tab and show search header
-    expect(screen.getByText('Find a Verified Student Ride')).toBeInTheDocument();
-
-    // Pickup and Drop should be populated with resolved location names
-    const pickupInput = screen.getByLabelText(/Pickup Spot/i);
-    const dropInput = screen.getByLabelText(/Drop Destination/i);
-
+    // Pickup should be populated with resolved location name
+    const pickupInput = screen.getByLabelText('Pickup (Origin)');
     expect(pickupInput).toHaveValue('Akurdi Railway Station Chowk');
-    expect(dropInput).toHaveValue('ICEM Main Campus (Parandwadi)');
   });
 });

@@ -94,6 +94,7 @@ export type JoinRequestCreatedEvent = BaseRideEvent<
     requester_id: string;
     requester_name: string;
     seat_count: number;
+    offered_amount?: number;
   }
 >;
 

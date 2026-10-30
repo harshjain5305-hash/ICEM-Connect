@@ -1,20 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Alert } from '@/components/ui/Alert';
 import { useAuth } from './useAuth';
-import { registerSchema, loginSchema, DEPARTMENTS } from './auth.schema';
+import {
+  registerSchema,
+  loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  DEPARTMENTS,
+} from './auth.schema';
 import { INSTITUTIONAL_DOMAIN } from './domainValidation';
-import { ShieldCheck, Mail, ArrowRight, UserCheck, KeyRound, Sparkles } from 'lucide-react';
+import { authService } from './auth.service';
+import {
+  ShieldCheck,
+  Mail,
+  ArrowRight,
+  UserCheck,
+  KeyRound,
+  Sparkles,
+  RefreshCw,
+  Lock,
+} from 'lucide-react';
+
+export type AuthMode =
+  | 'signin'
+  | 'register'
+  | 'verification_pending'
+  | 'forgot_password'
+  | 'reset_password';
 
 interface AuthShellProps {
   onSuccess?: (userEmail: string) => void;
+  initialMode?: AuthMode;
 }
 
-export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
+export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess, initialMode = 'register' }) => {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<'signin' | 'register' | 'verification_pending'>('register');
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [prn, setPrn] = useState('');
@@ -24,8 +48,18 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [statusMessage, setStatusMessage] = useState<{ type: 'info' | 'success' | 'warning' | 'destructive'; text: string } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{
+    type: 'info' | 'success' | 'warning' | 'destructive';
+    text: string;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+
+  useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode);
+    }
+  }, [initialMode]);
 
   const fillDemoStudent = () => {
     setName('Rahul Sharma');
@@ -47,6 +81,26 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
     setPassword('CampusPass123!');
     setConfirmPassword('CampusPass123!');
     setErrors({});
+  };
+
+  const handleResendVerification = async () => {
+    if (!email) return;
+    setIsResending(true);
+    setStatusMessage(null);
+    try {
+      await authService.resendVerificationEmail(email);
+      setStatusMessage({
+        type: 'success',
+        text: `Fresh verification link dispatched to ${email} redirecting to https://icem-connect.vercel.app/.`,
+      });
+    } catch (err) {
+      setStatusMessage({
+        type: 'destructive',
+        text: err instanceof Error ? err.message : 'Failed to resend verification link.',
+      });
+    } finally {
+      setIsResending(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -98,7 +152,7 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
       } finally {
         setIsLoading(false);
       }
-    } else {
+    } else if (mode === 'signin') {
       const result = loginSchema.safeParse({ email, password });
       if (!result.success) {
         const fieldErrors: Record<string, string> = {};
@@ -122,6 +176,66 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
       } finally {
         setIsLoading(false);
       }
+    } else if (mode === 'forgot_password') {
+      const result = forgotPasswordSchema.safeParse({ email });
+      if (!result.success) {
+        const fieldErrors: Record<string, string> = {};
+        result.error.errors.forEach((err) => {
+          if (err.path[0]) fieldErrors[String(err.path[0])] = err.message;
+        });
+        setErrors(fieldErrors);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        await authService.sendPasswordResetEmail(result.data.email);
+        setStatusMessage({
+          type: 'success',
+          text: `Password reset link dispatched to ${email}. Check your college inbox for the link directing to https://icem-connect.vercel.app/.`,
+        });
+      } catch (err) {
+        setStatusMessage({
+          type: 'destructive',
+          text: err instanceof Error ? err.message : 'Failed to send password reset email.',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    } else if (mode === 'reset_password') {
+      const result = resetPasswordSchema.safeParse({
+        password,
+        confirmPassword,
+      });
+      if (!result.success) {
+        const fieldErrors: Record<string, string> = {};
+        result.error.errors.forEach((err) => {
+          if (err.path[0]) fieldErrors[String(err.path[0])] = err.message;
+        });
+        setErrors(fieldErrors);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        await authService.updatePassword(result.data.password);
+        setStatusMessage({
+          type: 'success',
+          text: 'Password updated successfully! You can now sign in with your new password.',
+        });
+        setPassword('');
+        setConfirmPassword('');
+        setTimeout(() => {
+          setMode('signin');
+        }, 1800);
+      } catch (err) {
+        setStatusMessage({
+          type: 'destructive',
+          text: err instanceof Error ? err.message : 'Failed to update password.',
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -137,11 +251,19 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
               ? 'Verify Your ICEM Email'
               : mode === 'register'
               ? 'Create ICEM Student Account'
+              : mode === 'forgot_password'
+              ? 'Reset Your Password'
+              : mode === 'reset_password'
+              ? 'Set New Password'
               : 'Sign in to ICEM Connect'}
           </CardTitle>
           <CardDescription>
             {mode === 'verification_pending'
               ? `Verification sent to ${email}`
+              : mode === 'forgot_password'
+              ? `Enter your official @${INSTITUTIONAL_DOMAIN} email`
+              : mode === 'reset_password'
+              ? 'Enter your new account password below'
               : `Strictly restricted to verified @${INSTITUTIONAL_DOMAIN} students`}
           </CardDescription>
         </CardHeader>
@@ -164,9 +286,19 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
                   We enforce server-side validation to ensure only active ICEM students can join. Please check your college inbox at <strong>{email}</strong> to activate your account.
                 </p>
                 <p className="text-[11px] text-muted-foreground pt-1 border-t border-[#00A2A5]/20">
-                  Privacy note: Your PRN ({prn || 'verified'}) is stored strictly in private backend tables and will never be exposed to other riders.
+                  Confirmation link redirects securely to <strong>https://icem-connect.vercel.app/</strong>.
                 </p>
               </div>
+
+              <Button
+                type="button"
+                className="w-full bg-[#003C84] hover:bg-[#1D59A3] text-white gap-2"
+                onClick={handleResendVerification}
+                isLoading={isResending}
+              >
+                <RefreshCw className="h-4 w-4" />
+                <span>Resend Verification Link</span>
+              </Button>
 
               <Button
                 variant="outline"
@@ -179,6 +311,91 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
                 Back to Sign In
               </Button>
             </div>
+          ) : mode === 'forgot_password' ? (
+            <form onSubmit={handleSubmit} className="space-y-3.5">
+              <p className="text-xs text-muted-foreground">
+                We will send an authentic password reset link directly to your ICEM student email.
+                The link redirects to <strong>https://icem-connect.vercel.app/</strong> where you can securely set a new password.
+              </p>
+
+              <Input
+                label="ICEM Email Address"
+                type="email"
+                placeholder={`student@${INSTITUTIONAL_DOMAIN}`}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                error={errors.email}
+                helperText={`Must end with @${INSTITUTIONAL_DOMAIN}`}
+                disabled={isLoading}
+                required
+              />
+
+              <Button type="submit" className="w-full mt-2" isLoading={isLoading}>
+                <span>Send Reset Link</span>
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin');
+                    setErrors({});
+                    setStatusMessage(null);
+                  }}
+                  className="text-xs text-primary hover:underline font-medium"
+                >
+                  Remember your password? Sign In
+                </button>
+              </div>
+            </form>
+          ) : mode === 'reset_password' ? (
+            <form onSubmit={handleSubmit} className="space-y-3.5">
+              <p className="text-xs text-muted-foreground">
+                Enter your new password below to update your account credentials.
+              </p>
+
+              <Input
+                label="New Password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                error={errors.password}
+                disabled={isLoading}
+                required
+              />
+
+              <Input
+                label="Confirm New Password"
+                type="password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                error={errors.confirmPassword}
+                disabled={isLoading}
+                required
+              />
+
+              <Button type="submit" className="w-full mt-2 gap-2" isLoading={isLoading}>
+                <Lock className="h-4 w-4" />
+                <span>Update Password</span>
+              </Button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin');
+                    setErrors({});
+                    setStatusMessage(null);
+                  }}
+                  className="text-xs text-primary hover:underline font-medium"
+                >
+                  Back to Sign In
+                </button>
+              </div>
+            </form>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3.5">
               {/* Quick Fill Helpers for Testing */}
@@ -289,6 +506,22 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
                 required
               />
 
+              {mode === 'signin' && (
+                <div className="flex justify-end pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot_password');
+                      setErrors({});
+                      setStatusMessage(null);
+                    }}
+                    className="text-xs text-primary hover:underline font-medium"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+              )}
+
               {mode === 'register' && (
                 <Input
                   label="Confirm Password"
@@ -319,7 +552,7 @@ export const AuthShell: React.FC<AuthShellProps> = ({ onSuccess }) => {
           )}
         </CardContent>
 
-        {mode !== 'verification_pending' && (
+        {mode !== 'verification_pending' && mode !== 'forgot_password' && mode !== 'reset_password' && (
           <CardFooter className="flex flex-col gap-3 border-t border-border pt-4 text-center text-sm">
             {mode === 'register' ? (
               <p className="text-muted-foreground text-xs">

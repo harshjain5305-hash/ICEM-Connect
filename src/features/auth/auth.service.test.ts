@@ -85,6 +85,29 @@ describe('Auth Service Lifecycle & Roles (Phase 1)', () => {
     expect(updated.prn).toBe('PRN_ROHAN_88'); // Preserved unchanged
   });
 
+  it('allows student to update upi_id and preserves it across session', async () => {
+    const input = {
+      name: 'Harsh Jain',
+      email: 'harsh.jain@indiraicem.ac.in',
+      prn: 'PRN_HARSH_77',
+      password: 'StrongPassword123!',
+      confirmPassword: 'StrongPassword123!',
+    };
+
+    const reg = await authService.register(input);
+    const updated = await authService.updateProfile(reg.user.id, {
+      department: 'MCA',
+      year: 1,
+      upi_id: 'harsh@okhdfcbank',
+    });
+
+    expect(updated.upi_id).toBe('harsh@okhdfcbank');
+    expect(updated.department).toBe('MCA');
+
+    const session = await authService.getCurrentSession();
+    expect(session?.profile.upi_id).toBe('harsh@okhdfcbank');
+  });
+
   it('enforces that admin endpoints reject ordinary students', async () => {
     const studentInput = {
       name: 'Normal Student',
@@ -105,5 +128,27 @@ describe('Auth Service Lifecycle & Roles (Phase 1)', () => {
     await expect(
       authService.updateStudentStatus(reg.user.id, 'some_other_id', 'SUSPENDED')
     ).rejects.toThrow(/Forbidden: Admin privilege required/i);
+  });
+
+  it('supports password reset request, resend verification, and password update', async () => {
+    const studentInput = {
+      name: 'Priya Sharma',
+      email: 'priya.sharma@indiraicem.ac.in',
+      prn: 'PRN_PRIYA_55',
+      password: 'OldPassword123!',
+      confirmPassword: 'OldPassword123!',
+    };
+
+    await authService.register(studentInput);
+
+    // Can request password reset link without throwing
+    await expect(authService.sendPasswordResetEmail(studentInput.email)).resolves.not.toThrow();
+
+    // Can resend verification email without throwing
+    await expect(authService.resendVerificationEmail(studentInput.email)).resolves.not.toThrow();
+
+    // Can update password after login / recovery session
+    await authService.login({ email: studentInput.email, password: studentInput.password });
+    await expect(authService.updatePassword('NewSecretPass999!')).resolves.not.toThrow();
   });
 });

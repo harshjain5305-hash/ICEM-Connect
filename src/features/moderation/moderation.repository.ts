@@ -9,30 +9,11 @@ import type {
 } from './moderation.types';
 import type { PublicStudentInfo } from '@/features/requests/request.types';
 
-const LOCAL_STORAGE_REPORTS_KEY = 'icem_reports_v1';
-const LOCAL_STORAGE_BLOCKS_KEY = 'icem_user_blocks_v1';
+import { isValidUuid } from '@/lib/utils';
+import { getLocalData, saveLocalData, STORAGE_KEYS } from '@/lib/localStorage';
 
-function isValidUuid(id?: string | null): boolean {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-}
-
-function getLocalData<T>(key: string): Record<string, T> {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLocalData<T>(key: string, data: Record<string, T>): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (err) {
-    console.error(`Failed to save localStorage key ${key}:`, err);
-  }
-}
+const LOCAL_STORAGE_REPORTS_KEY = STORAGE_KEYS.REPORTS;
+const LOCAL_STORAGE_BLOCKS_KEY = STORAGE_KEYS.BLOCKED_USERS;
 
 async function getPublicStudentInfo(studentId: string): Promise<PublicStudentInfo> {
   const profile = await authService.getProfile(studentId);
@@ -137,7 +118,7 @@ export const moderationRepository = {
           .eq('reporter_id', reporterId)
           .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           for (const item of data) {
             const r = item as unknown as UserReport;
             r.reporter = await getPublicStudentInfo(r.reporter_id);
@@ -179,7 +160,7 @@ export const moderationRepository = {
           query = query.eq('status', filterStatus);
         }
         const { data, error } = await query;
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           for (const item of data) {
             const r = item as unknown as UserReport;
             r.reporter = await getPublicStudentInfo(r.reporter_id);
@@ -223,10 +204,11 @@ export const moderationRepository = {
 
     if (isLive && isValidUuid(adminId) && isValidUuid(reportId)) {
       try {
+        const dbStatus = (status === 'REVIEWED' ? 'UNDER_REVIEW' : status) as 'PENDING' | 'UNDER_REVIEW' | 'RESOLVED' | 'DISMISSED';
         await supabase.rpc('resolve_report', {
           p_admin_id: adminId,
           p_report_id: reportId,
-          p_status: status,
+          p_status: dbStatus,
           p_resolution_note: resolutionNote || null,
         });
       } catch (err) {
@@ -322,7 +304,7 @@ export const moderationRepository = {
           .eq('blocker_id', blockerId)
           .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           for (const item of data) {
             const b = item as unknown as UserBlock;
             b.blocked_user = await getPublicStudentInfo(b.blocked_id);

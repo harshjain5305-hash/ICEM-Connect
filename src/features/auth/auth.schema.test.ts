@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { registerSchema, loginSchema, profileUpdateSchema } from './auth.schema';
+import {
+  registerSchema,
+  loginSchema,
+  profileUpdateSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from './auth.schema';
 
 describe('Auth Validation Schemas (Phase 1)', () => {
   it('validates a complete student registration payload', () => {
@@ -89,5 +95,22 @@ describe('Auth Validation Schemas (Phase 1)', () => {
 
     const invalidUrl = { profile_image_url: 'not-a-url' };
     expect(profileUpdateSchema.safeParse(invalidUrl).success).toBe(false);
+  });
+
+  it('validates forgot password schema for institutional emails only', () => {
+    expect(forgotPasswordSchema.safeParse({ email: 'student@indiraicem.ac.in' }).success).toBe(true);
+    expect(forgotPasswordSchema.safeParse({ email: 'student@gmail.com' }).success).toBe(false);
+    expect(forgotPasswordSchema.safeParse({ email: '' }).success).toBe(false);
+  });
+
+  it('validates reset password schema with confirmation matching', () => {
+    const valid = { password: 'NewSafePassword123!', confirmPassword: 'NewSafePassword123!' };
+    expect(resetPasswordSchema.safeParse(valid).success).toBe(true);
+
+    const mismatch = { password: 'NewSafePassword123!', confirmPassword: 'DifferentPassword123!' };
+    expect(resetPasswordSchema.safeParse(mismatch).success).toBe(false);
+
+    const tooShort = { password: '123', confirmPassword: '123' };
+    expect(resetPasswordSchema.safeParse(tooShort).success).toBe(false);
   });
 });

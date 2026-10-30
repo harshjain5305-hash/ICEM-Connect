@@ -1,29 +1,9 @@
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import type { AppNotification, CreateNotificationInput } from './notification.types';
+import { isValidUuid } from '@/lib/utils';
+import { getLocalData, saveLocalData, STORAGE_KEYS } from '@/lib/localStorage';
 
-const LOCAL_STORAGE_NOTIFS_KEY = 'icem_notifications_v1';
-
-function getLocalData<T>(key: string): Record<string, T> {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLocalData<T>(key: string, data: Record<string, T>): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (err) {
-    console.error(`Failed to save data to localStorage key ${key}:`, err);
-  }
-}
-
-function isValidUuid(id?: string | null): boolean {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-}
+const LOCAL_STORAGE_NOTIFS_KEY = STORAGE_KEYS.NOTIFICATIONS;
 
 export const notificationRepository = {
   async createNotification(input: CreateNotificationInput): Promise<AppNotification> {
@@ -86,7 +66,7 @@ export const notificationRepository = {
           .eq('user_id', userId)
           .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           liveResults.push(...(data as unknown as AppNotification[]));
         }
       } catch (err) {

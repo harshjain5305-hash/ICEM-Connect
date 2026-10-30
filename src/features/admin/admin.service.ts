@@ -3,10 +3,13 @@ import { moderationService } from '@/features/moderation/moderation.service';
 import { rideRepository } from '@/features/rides/ride.repository';
 import { notificationService } from '@/features/notifications/notification.service';
 import { requestRepository } from '@/features/requests/request.repository';
+import { locationService } from '@/features/locations/location.service';
+import type { Location, CreateLocationInput, UpdateLocationInput } from '@/features/locations/location.schema';
 import type { StudentProfile } from '@/features/auth/auth.types';
 import type { UserReport, ReportStatus } from '@/features/moderation/moderation.types';
 import type { Ride } from '@/features/rides/ride.types';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
+import { STORAGE_KEYS } from '@/lib/localStorage';
 
 export interface CampusMetrics {
   totalStudents: number;
@@ -20,6 +23,49 @@ export interface CampusMetrics {
   confirmedBookings: number;
   totalReports: number;
   pendingReports: number;
+}
+
+async function hydrateAdminRideLocations(rides: Ride[]): Promise<Ride[]> {
+  return Promise.all(
+    rides.map(async (ride) => {
+      let origin = ride.origin;
+      let destination = ride.destination;
+
+      if (!origin && ride.origin_location_id) {
+        const loc = await locationService.getById(ride.origin_location_id);
+        if (loc) {
+          origin = {
+            id: loc.id,
+            name: loc.name,
+            type: loc.type,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            address: loc.address,
+          };
+        }
+      }
+
+      if (!destination && ride.destination_location_id) {
+        const loc = await locationService.getById(ride.destination_location_id);
+        if (loc) {
+          destination = {
+            id: loc.id,
+            name: loc.name,
+            type: loc.type,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            address: loc.address,
+          };
+        }
+      }
+
+      return {
+        ...ride,
+        origin,
+        destination,
+      };
+    })
+  );
 }
 
 export const adminService = {
@@ -56,29 +102,53 @@ export const adminService = {
     }
     if (rides.length === 0) {
       try {
-        const raw = localStorage.getItem('icem_connect_rides_db_v1');
+        const raw = localStorage.getItem(STORAGE_KEYS.RIDES);
         if (raw) rides = Object.values(JSON.parse(raw));
       } catch {
         // ignore
       }
     }
 
-    // Fetch requests
+    // Fetch requests (live count query or local fallback)
     let totalRequests = 0;
-    try {
-      const raw = localStorage.getItem('icem_join_requests_v1');
-      if (raw) totalRequests = Object.keys(JSON.parse(raw)).length;
-    } catch {
-      // ignore
+    if (isLive) {
+      try {
+        const { count } = await supabase
+          .from('ride_join_requests')
+          .select('*', { count: 'exact', head: true });
+        if (typeof count === 'number') totalRequests = count;
+      } catch {
+        // fallback
+      }
+    }
+    if (totalRequests === 0) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.REQUESTS);
+        if (raw) totalRequests = Object.keys(JSON.parse(raw)).length;
+      } catch {
+        // ignore
+      }
     }
 
-    // Fetch confirmed participants
+    // Fetch confirmed participants (live count query or local fallback)
     let confirmedBookings = 0;
-    try {
-      const raw = localStorage.getItem('icem_participants_v1');
-      if (raw) confirmedBookings = Object.keys(JSON.parse(raw)).length;
-    } catch {
-      // ignore
+    if (isLive) {
+      try {
+        const { count } = await supabase
+          .from('ride_participants')
+          .select('*', { count: 'exact', head: true });
+        if (typeof count === 'number') confirmedBookings = count;
+      } catch {
+        // fallback
+      }
+    }
+    if (confirmedBookings === 0) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.PARTICIPANTS);
+        if (raw) confirmedBookings = Object.keys(JSON.parse(raw)).length;
+      } catch {
+        // ignore
+      }
     }
 
     return {
@@ -118,32 +188,77 @@ export const adminService = {
   },
 
   /**
-   * Lists all rides across campus.
+   * Lists all rides across campus with hydrated origin & destination names.
    */
   async listAllRides(adminUserId: string): Promise<Ride[]> {
     await this.requireAdmin(adminUserId);
 
+    let rawRides: Ride[] = [];
     const isLive = isSupabaseConfigured();
     if (isLive) {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('rides')
           .select('*')
           .order('departure_date', { ascending: false });
-        if (data && data.length > 0) {
-          return data as unknown as Ride[];
+        if (!error && data) {
+          rawRides = data as unknown as Ride[];
         }
       } catch (err) {
         console.warn('Live listAllRides error:', err);
       }
     }
 
-    try {
-      const raw = localStorage.getItem('icem_connect_rides_db_v1');
-      return raw ? Object.values(JSON.parse(raw)) : [];
-    } catch {
-      return [];
+    if (rawRides.length === 0) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.RIDES);
+        if (raw) rawRides = Object.values(JSON.parse(raw));
+      } catch {
+        rawRides = [];
+      }
     }
+
+    return await hydrateAdminRideLocations(rawRides);
+  },
+
+  /**
+   * Lists all locations/waypoints across campus for administrative management.
+   */
+  async listLocations(adminUserId: string): Promise<Location[]> {
+    await this.requireAdmin(adminUserId);
+    return await locationService.listAll();
+  },
+
+  /**
+   * Creates a new location / transit waypoint.
+   */
+  async createLocation(adminUserId: string, input: CreateLocationInput): Promise<Location> {
+    await this.requireAdmin(adminUserId);
+    return await locationService.createLocation(input);
+  },
+
+  /**
+   * Updates an existing location / waypoint.
+   */
+  async updateLocation(
+    adminUserId: string,
+    locationId: string,
+    updates: UpdateLocationInput
+  ): Promise<Location> {
+    await this.requireAdmin(adminUserId);
+    return await locationService.updateLocation(locationId, updates);
+  },
+
+  /**
+   * Toggles active state of a location.
+   */
+  async toggleLocationStatus(
+    adminUserId: string,
+    locationId: string,
+    isActive: boolean
+  ): Promise<Location> {
+    await this.requireAdmin(adminUserId);
+    return await locationService.toggleActive(locationId, isActive);
   },
 
   /**

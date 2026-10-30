@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import { useAuth } from '@/features/auth/useAuth';
 import { rideService } from './ride.service';
 import type { Ride } from './ride.types';
@@ -62,10 +63,15 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [publishingScheduleId, setPublishingScheduleId] = useState<string | null>(null);
+  const isFetchingRef = React.useRef(false);
 
-  const fetchRides = useCallback(async () => {
-    if (!user) return;
-    setIsLoading(true);
+  const fetchRides = useCallback(async (silent = false) => {
+    if (!user || isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    if (!silent) {
+      setIsLoading(true);
+    }
     try {
       const [data, scheds] = await Promise.all([
         rideService.listHostRides(user.id),
@@ -98,12 +104,64 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
     } catch (err) {
       console.error('Failed to load host rides:', err);
     } finally {
-      setIsLoading(false);
+      isFetchingRef.current = false;
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, [user]);
 
   useEffect(() => {
-    fetchRides();
+    fetchRides(false);
+
+    // 1. Supabase Realtime subscription for incoming join requests
+    let channel: any = null;
+    if (isSupabaseConfigured()) {
+      try {
+        channel = supabase
+          .channel('public:ride_join_requests_my_rides')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'ride_join_requests' },
+            () => {
+              fetchRides(true);
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn('Realtime subscription error on MyRidesView:', err);
+      }
+    }
+
+    // 2. Cross-tab & Window custom events
+    const handleRequestsUpdate = () => {
+      fetchRides(true);
+    };
+    window.addEventListener('icem:join_requests_updated', handleRequestsUpdate);
+
+    // 3. Tab visibility listener
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchRides(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 4. Fallback interval when visible (15s)
+    const pollTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchRides(true);
+      }
+    }, 15000);
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+      window.removeEventListener('icem:join_requests_updated', handleRequestsUpdate);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(pollTimer);
+    };
   }, [fetchRides]);
 
   const handleToggleSchedule = async (scheduleId: string, currentActive: boolean) => {
@@ -136,6 +194,21 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
       await fetchRides();
     } catch (err) {
       console.error('Failed to delete schedule:', err);
+    }
+  };
+
+  const handlePublishNext = async (scheduleId: string) => {
+    if (!user) return;
+    setPublishingScheduleId(scheduleId);
+    try {
+      const newRide = await recurringScheduleService.publishNextRide(scheduleId);
+      if (newRide) {
+        await fetchRides(false);
+      }
+    } catch (err) {
+      console.error('Failed to publish next routine ride:', err);
+    } finally {
+      setPublishingScheduleId(null);
     }
   };
 
@@ -181,6 +254,10 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
 
   const handleDismissRide = async (rideId: string) => {
     if (!user) return;
+    const targetRide = rides.find((r) => r.id === rideId);
+    if (targetRide?.status === 'ACTIVE') {
+      return; // Cannot delete an active live ride in progress
+    }
     setRides((prev) => prev.filter((r) => r.id !== rideId));
     try {
       await rideService.dismissRide(user.id, rideId);
@@ -314,7 +391,7 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
               <Button
                 variant="outline"
                 size="sm"
-                onClick={fetchRides}
+                onClick={() => fetchRides(false)}
                 disabled={isLoading}
                 className="gap-1.5 text-xs"
               >
@@ -368,6 +445,18 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
                       </div>
 
                       <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handlePublishNext(schedule.id)}
+                          disabled={publishingScheduleId === schedule.id || !schedule.is_active}
+                          className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                          title="Publish next upcoming weekday ride from this routine"
+                        >
+                          <PlusCircle className={`h-3 w-3 ${publishingScheduleId === schedule.id ? 'animate-spin' : ''}`} />
+                          <span>Publish Next Ride</span>
+                        </Button>
+
                         <Button
                           size="sm"
                           variant="outline"
@@ -541,7 +630,8 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
                   <SwipeableItem
                     key={ride.id}
                     onDelete={() => handleDismissRide(ride.id)}
-                    deleteLabel="Dismiss"
+                    disabled={ride.status === 'ACTIVE'}
+                    deleteLabel="Delete"
                   >
                     <div
                       onClick={() => {
@@ -573,18 +663,20 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Calendar className="h-3 w-3" /> {ride.departure_date} &bull; <Clock className="h-3 w-3" /> {ride.departure_time}
                           </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDismissRide(ride.id);
-                            }}
-                            title="Dismiss ride (auto-deletes in 2 days)"
-                            aria-label="Dismiss ride"
-                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {ride.status !== 'ACTIVE' && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDismissRide(ride.id);
+                              }}
+                              title="Delete ride permanently from database"
+                              aria-label="Delete ride"
+                              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -643,12 +735,22 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
                                 </span>
                               </div>
 
-                              <div className="rounded bg-muted/40 p-2 text-[11px] space-y-0.5">
-                                <div className="flex justify-between">
+                              <div className="rounded bg-muted/40 p-2 text-[11px] space-y-1">
+                                <div className="flex justify-between items-center">
                                   <span className="text-muted-foreground">Requested:</span>
                                   <span className="font-semibold text-foreground">
                                     {req.seat_count} {req.seat_count === 1 ? 'Seat' : 'Seats'}
                                   </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-muted-foreground">Fuel Share:</span>
+                                  {Number(req.offered_amount) > 0 ? (
+                                    <span className="font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded text-[10px]">
+                                      ₹{Number(req.offered_amount)} offered
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground italic text-[10px]">₹0 (Free / No share)</span>
+                                  )}
                                 </div>
                                 <div className="flex justify-between">
                                   <span className="text-muted-foreground">Pickup note:</span>
@@ -783,6 +885,9 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({ onOfferNewClick, onFin
             setSelectedRide(null);
           }}
           onRideUpdated={handleRideUpdated}
+          onRideDeleted={(deletedId) => {
+            setRides((prev) => prev.filter((r) => r.id !== deletedId));
+          }}
         />
       )}
     </div>

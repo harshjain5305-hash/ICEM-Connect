@@ -71,7 +71,7 @@ export const OfferRideForm: React.FC<OfferRideFormProps> = ({
   const [vehicleType, setVehicleType] = useState<VehicleType>('SCOOTER');
   const [totalSeats, setTotalSeats] = useState<number>(1);
   const [note, setNote] = useState<string>('');
-  const [isRecurring, setIsRecurring] = useState<boolean>(true);
+  const [isRecurring, setIsRecurring] = useState<boolean>(false);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isDraftSubmitting, setIsDraftSubmitting] = useState<boolean>(false);
@@ -187,18 +187,22 @@ export const OfferRideForm: React.FC<OfferRideFormProps> = ({
       const ride = await rideService.createRide(user.id, payload, asDraft);
       setCreatedRide(ride);
 
-      // If host checked "Repeat Mon-Fri", auto-create recurring schedule
+      // If host checked "Repeat Mon-Fri", save recurring commute routine template without flooding extra rides
       if (isRecurring && !asDraft) {
         try {
-          await recurringScheduleService.createSchedule(user.id, {
-            origin_location_id: origin.id,
-            destination_location_id: destination.id,
-            departure_time: departureTime,
-            total_seats: totalSeats,
-            vehicle_type: vehicleType,
-            note: note.trim() || null,
-            days_of_week: [1, 2, 3, 4, 5],
-          });
+          await recurringScheduleService.createSchedule(
+            user.id,
+            {
+              origin_location_id: origin.id,
+              destination_location_id: destination.id,
+              departure_time: departureTime,
+              total_seats: totalSeats,
+              vehicle_type: vehicleType,
+              note: note.trim() || null,
+              days_of_week: [1, 2, 3, 4, 5],
+            },
+            0 // Option 1: Strictly 0 extra rides auto-spawned. Only the 1 ride created above is published.
+          );
         } catch (schedErr) {
           console.warn('Failed to auto-create recurring commute schedule:', schedErr);
         }
@@ -468,7 +472,7 @@ export const OfferRideForm: React.FC<OfferRideFormProps> = ({
                   <span>Repeat Mon–Fri (Daily Commute Routine)</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Automatically publishes your empty seat for upcoming weekdays so you don&apos;t have to fill this form every morning!
+                  Publishes this ride and saves your Mon–Fri commute routine in My Rides so you can easily manage or re-publish it with 1 click without retyping details.
                 </p>
               </div>
             </label>
